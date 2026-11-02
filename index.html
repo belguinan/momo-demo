@@ -101,7 +101,7 @@
     <g id="burst"></g>
   </svg>
 
-  <p id="caption" aria-live="polite">Press start and say hello.</p>
+  <p id="caption" aria-live="polite">Press start, then ask how I was built.</p>
   <div id="traits"></div>
   <div class="bar">
     <button id="toggle" type="button">Start listening</button>
@@ -553,7 +553,7 @@ function stop() {
   $("detected").hidden = true;
   document.documentElement.style.setProperty("--tint", "#f6edda");
   $("toggle").textContent = "Start listening";
-  say("Press start and say hello.");
+  say("Press start, then ask how I was built.");
 }
 
 async function unlock(candidate) {
