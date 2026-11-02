@@ -1,0 +1,587 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Momo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,500..700,100,1&family=Figtree:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #2a1f17;
+    --ink-soft: #5e4d3f;
+    --openness: #2f8f8b;
+    --conscientiousness: #b97c12;
+    --extraversion: #e4632f;
+    --agreeableness: #6c9a5b;
+    --neuroticism: #6478c8;
+    --tint: #f6edda;
+  }
+  * { box-sizing: border-box; }
+  ::selection { background: var(--ink); color: #f6edda; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--tint); color: var(--ink); font: 400 16px/1.5 Figtree, "Avenir Next", system-ui, sans-serif; transition: background 1s cubic-bezier(.16, 1, .3, 1); }
+  main { min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 16px 16px 20px; }
+  #detected { margin: 0 0 12px; padding: 6px 24px 8px; border-radius: 999px; background: var(--lead); color: #fff; font: 700 clamp(26px, 3.6vw, 36px)/1.15 Fraunces, Georgia, serif; font-variation-settings: "SOFT" 100, "WONK" 1; animation: arrive .55s cubic-bezier(.16, 1, .3, 1); }
+  @keyframes arrive { from { transform: translateY(-10px) scale(.9); opacity: 0; } }
+  svg#momo { width: min(440px, 92vw); height: min(56dvh, 520px); overflow: visible; }
+  .prop { opacity: 0; transition: opacity .25s; }
+  .prop.on { opacity: 1; }
+  #caption { margin: 0; min-height: 2.6em; max-width: 34ch; text-align: center; font: 500 clamp(20px, 2.6vw, 26px)/1.3 Fraunces, Georgia, serif; font-variation-settings: "SOFT" 100, "WONK" 1; text-wrap: balance; }
+  #traits { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; width: min(560px, 100%); }
+  .trait { font-size: 13px; font-weight: 500; color: var(--ink-soft); text-align: center; }
+  .trait.lead { color: var(--ink); font-weight: 600; }
+  .track { position: relative; height: 6px; margin-top: 4px; border-radius: 3px; background: rgba(42, 31, 23, .14); overflow: hidden; }
+  .fill { position: absolute; top: 0; bottom: 0; left: 50%; width: 0; background: var(--c); transition: left .7s cubic-bezier(.16, 1, .3, 1), width .7s cubic-bezier(.16, 1, .3, 1); }
+  .bar { display: flex; align-items: center; gap: 18px; margin-top: 8px; flex-wrap: wrap; justify-content: center; }
+  button { padding: 12px 26px; border: 0; border-radius: 999px; background: var(--ink); color: #fff8e8; font: 600 16px Figtree, system-ui, sans-serif; cursor: pointer; transition: transform .2s cubic-bezier(.16, 1, .3, 1); }
+  button:hover { transform: translateY(-1px); }
+  button:active { transform: scale(.97); }
+  button:focus-visible, summary:focus-visible { outline: 3px solid var(--extraversion); outline-offset: 2px; }
+  details { width: min(760px, 100%); font-size: 14px; }
+  summary { cursor: pointer; text-align: center; color: var(--ink-soft); font-weight: 500; }
+  .scroll { overflow-x: auto; margin-top: 8px; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { padding: 6px 8px; text-align: right; border-bottom: 1px solid rgba(42, 31, 23, .15); }
+  th:first-child, td:first-child { text-align: left; min-width: 240px; }
+  td small { display: block; font-size: 14px; color: var(--ink-soft); }
+  #lock { position: fixed; inset: 0; z-index: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 16px; background: var(--tint); text-align: center; }
+  #lock[hidden] { display: none; }
+  #lock h1 { margin: 0; font: 700 clamp(30px, 5vw, 42px)/1.15 Fraunces, Georgia, serif; }
+  #key { width: min(340px, 100%); padding: 12px 18px; border: 2px solid var(--ink); border-radius: 999px; background: #fffaf0; color: var(--ink); font: 500 16px Figtree, system-ui, sans-serif; text-align: center; }
+  #key:focus-visible { outline: 3px solid var(--extraversion); outline-offset: 2px; }
+  #lockMessage { margin: 0; min-height: 1.5em; color: #b23a1e; font-weight: 600; }
+  #lock small { max-width: 44ch; color: var(--ink-soft); font-size: 14px; }
+  @media (max-width: 520px) {
+    #traits { gap: 6px; }
+    .trait { font-size: 11px; }
+  }
+</style>
+</head>
+<body>
+<form id="lock" hidden>
+  <h1>Momo</h1>
+  <input id="key" type="password" aria-label="Access key" placeholder="Access key" autocomplete="off" required>
+  <button type="submit">Unlock</button>
+  <p id="lockMessage" role="alert"></p>
+  <small>Your voice goes to this demo's server, and your words go to Google, DeepSeek and ElevenLabs. This demo does not store them.</small>
+</form>
+<main>
+  <h1 id="detected" aria-live="polite" hidden></h1>
+  <svg id="momo" viewBox="-40 -40 480 490" role="img" aria-label="Momo, an animated character">
+    <g id="waves" fill="none" stroke="#2a1f17" stroke-width="6" stroke-linecap="round">
+      <path d="M-6 110Q-22 150 -6 190M-26 92Q-48 150 -26 208"/>
+      <path d="M406 110Q422 150 406 190M426 92Q448 150 426 208"/>
+    </g>
+    <g id="rig">
+      <g id="umbrella" class="prop"><image href="assets/umbrella.webp" x="-82" y="-165" width="164" height="178"/></g>
+      <g id="upper">
+        <path id="sprout" fill="none" stroke="#2a1f17" stroke-width="22" stroke-linecap="round"/>
+        <path id="sprout2" fill="none" stroke="#fbe8bf" stroke-width="10" stroke-linecap="round"/>
+        <image href="assets/body.webp" x="45" y="34" width="310" height="408"/>
+        <g id="eyeL"><ellipse cx="166" cy="165" rx="19" ry="29" fill="#2a1f17"/><circle cx="172" cy="152" r="7" fill="#fff"/></g>
+        <g id="eyeR"><ellipse cx="234" cy="165" rx="19" ry="29" fill="#2a1f17"/><circle cx="240" cy="152" r="7" fill="#fff"/></g>
+        <path id="browL" fill="none" stroke="#2a1f17" stroke-width="7" stroke-linecap="round"/>
+        <path id="browR" fill="none" stroke="#2a1f17" stroke-width="7" stroke-linecap="round"/>
+        <path id="mouth" stroke="#2a1f17" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/>
+        <ellipse id="tongue" fill="#e8604c"/>
+        <g id="glasses" class="prop"><image href="assets/glasses.webp" x="98" y="122" width="204" height="85"/></g>
+      </g>
+      <path id="armL1" fill="none" stroke="#2a1f17" stroke-width="24" stroke-linecap="round"/>
+      <path id="armR1" fill="none" stroke="#2a1f17" stroke-width="24" stroke-linecap="round"/>
+      <path id="armL2" fill="none" stroke="#fbe8bf" stroke-width="11" stroke-linecap="round"/>
+      <path id="armR2" fill="none" stroke="#fbe8bf" stroke-width="11" stroke-linecap="round"/>
+      <g id="spyglass" class="prop"><image href="assets/spyglass.webp" x="-30" y="-48" width="160" height="93"/></g>
+      <g id="clipboard" class="prop"><image href="assets/clipboard.webp" x="-58" y="-80" width="116" height="158"/></g>
+      <g id="megaphone" class="prop"><image href="assets/megaphone.webp" x="-112" y="-100" width="142" height="130"/></g>
+      <g id="teacup" class="prop"><image href="assets/teacup.webp" x="-58" y="-110" width="116" height="142"/></g>
+    </g>
+    <g id="orbit" fill="#2a1f17"><circle r="9"/><circle r="9"/><circle r="9"/></g>
+    <g id="burst"></g>
+  </svg>
+
+  <p id="caption" aria-live="polite">Press start and say hello.</p>
+  <div id="traits"></div>
+  <div class="bar">
+    <button id="toggle" type="button">Start listening</button>
+  </div>
+  <details>
+    <summary>History</summary>
+    <div class="scroll"><table>
+      <thead><tr><th>Said</th><th>O</th><th>C</th><th>E</th><th>A</th><th>N</th><th>Read as</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table></div>
+  </details>
+</main>
+
+<script>
+const TRAITS = ["openness", "conscientiousness", "extraversion", "agreeableness", "neuroticism"];
+const NAMES = { openness: "Openness", conscientiousness: "Conscientiousness", extraversion: "Extraversion", agreeableness: "Agreeableness", neuroticism: "Neuroticism" };
+const SHORT = { openness: "Open", conscientiousness: "Careful", extraversion: "Lively", agreeableness: "Warm", neuroticism: "Uneasy" };
+const TINTS = { openness: "#d9ebe3", conscientiousness: "#f3e3bb", extraversion: "#fbdcc8", agreeableness: "#dfe9cf", neuroticism: "#dfe2f3" };
+const POSES = {
+  none: { l: [44, 292], r: [356, 292], props: [], brow: 0, smile: 14 },
+  openness: { l: [44, 292], r: [336, 176], props: ["spyglass"], brow: 0, smile: 18 },
+  conscientiousness: { l: [78, 306], r: [300, 298], props: ["clipboard", "glasses"], brow: 0, smile: 8 },
+  extraversion: { l: [66, 204], r: [372, 170], props: ["megaphone"], brow: 0, smile: 26 },
+  agreeableness: { l: [162, 344], r: [238, 344], props: ["teacup"], brow: -3, smile: 22 },
+  neuroticism: { l: [50, 300], r: [352, 236], props: ["umbrella"], brow: -14, smile: -8 }
+};
+const MIN_SECONDS = 5, MAX_SECONDS = 15, PAUSE_SECONDS = 1.2, PRE_ROLL = 0.3, SCALE = 0.2, FRAME = 1000 / 30;
+const API = ["localhost", "127.0.0.1"].includes(location.hostname) ? "" : "https://15-235-100-243.sslip.io";
+let demoKey = "";
+const api = (path, options = {}) => fetch(API + path, { ...options, headers: { ...options.headers, "X-Demo-Key": demoKey } });
+const $ = id => document.getElementById(id);
+
+const bars = {};
+for (const trait of TRAITS) {
+  const item = document.createElement("div");
+  item.className = "trait";
+  item.style.setProperty("--c", `var(--${trait})`);
+  item.innerHTML = `${SHORT[trait]}<div class="track"><div class="fill"></div></div>`;
+  $("traits").appendChild(item);
+  bars[trait] = { item, fill: item.querySelector(".fill") };
+}
+
+let recording = false, context, stream, source, processor, recognition, voice, voiceNode, speechData;
+let chunks = [], total = 0, floor = 0.01, speaking = false, spoken = 0, silence = 0;
+let heard = "", interim = "", queue = [], working = false, talking = false, history = [];
+let state = "idle", pose = POSES.none, micLevel = 0, pointer = { x: 0, y: 0 };
+
+const spring = (x, stiff, damp) => ({ x, to: x, v: 0, stiff, damp });
+const step = s => { s.v = (s.v + (s.to - s.x) * s.stiff) * s.damp; s.x += s.v; return s.x; };
+const rig = {
+  lx: spring(44, .16, .68), ly: spring(292, .16, .68), rx: spring(356, .16, .68), ry: spring(292, .16, .68),
+  tip: spring(0, .1, .78), lean: spring(0, .1, .75), squash: spring(0, .22, .6), mouth: spring(0, .5, .45),
+  gx: spring(0, .2, .65), gy: spring(0, .2, .65), brow: spring(0, .15, .7), smile: spring(16, .15, .7), lid: spring(.5, .2, .65),
+  jump: spring(0, .12, .74), pop: spring(0, .16, .62)
+};
+let nextBlink = 2, blinkAt = -1, lastFrame = 0, burstAt = -10;
+const sparks = Array.from({ length: 12 }, (_, i) => {
+  const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  dot.setAttribute("r", 5 + i % 3 * 3);
+  $("burst").appendChild(dot);
+  return { dot, angle: i / 12 * Math.PI * 2, reach: 170 + i % 4 * 28 };
+});
+
+function setPose(name) {
+  pose = POSES[name];
+  rig.pop.x = 0;
+  rig.pop.to = 1;
+  if (name !== "none") {
+    rig.jump.v = -15;
+    rig.squash.v = .05;
+    burstAt = performance.now() / 1000;
+    $("burst").setAttribute("fill", getComputedStyle(document.documentElement).getPropertyValue(`--${name}`));
+  }
+  for (const id of ["spyglass", "clipboard", "megaphone", "teacup", "umbrella", "glasses"]) $(id).classList.toggle("on", pose.props.includes(id));
+}
+
+function speechLevel() {
+  if (!voiceNode) return 0;
+  voiceNode.getFloatTimeDomainData(speechData);
+  let sum = 0;
+  for (let i = 0; i < speechData.length; i++) sum += speechData[i] * speechData[i];
+  return Math.min(1, Math.sqrt(sum / speechData.length) * 5.5);
+}
+
+function drawMouth(open, smile) {
+  const x = 200, y = 222, w = 24 + open * 6;
+  const shape = $("mouth"), tongue = $("tongue");
+  if (open < 0.05) {
+    shape.setAttribute("d", `M${x - w} ${y}Q${x} ${y + smile} ${x + w} ${y}`);
+    shape.setAttribute("fill", "none");
+    tongue.setAttribute("rx", 0);
+    return;
+  }
+  const depth = y + 8 + open * 46;
+  shape.setAttribute("d", `M${x - w} ${y}Q${x} ${y - 4} ${x + w} ${y}Q${x + w * .7} ${depth} ${x} ${depth}Q${x - w * .7} ${depth} ${x - w} ${y}Z`);
+  shape.setAttribute("fill", "#5b2415");
+  tongue.setAttribute("cx", x);
+  tongue.setAttribute("cy", depth - 6 - open * 6);
+  tongue.setAttribute("rx", w * .45);
+  tongue.setAttribute("ry", open * 9);
+}
+
+function drawArm(top, bottom, shoulderX, x, y) {
+  const shoulder = 244, midX = (shoulderX + x) / 2 + (x - shoulderX) * .1, midY = Math.max(shoulder, y) + 22;
+  const d = `M${shoulderX} ${shoulder}Q${midX} ${midY} ${x} ${y}`;
+  top.setAttribute("d", d);
+  bottom.setAttribute("d", d);
+}
+
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (now - lastFrame < FRAME - 1) return;
+  lastFrame = now;
+  const t = now / 1000;
+  const talkLevel = speechLevel();
+  const level = state === "speaking" ? talkLevel : state === "listening" ? micLevel : 0;
+
+  rig.lx.to = pose.l[0]; rig.ly.to = pose.l[1]; rig.rx.to = pose.r[0]; rig.ry.to = pose.r[1];
+  rig.brow.to = pose.brow; rig.smile.to = pose.smile;
+  rig.lid.to = state === "idle" ? .55 : 1;
+  rig.mouth.to = state === "speaking" ? talkLevel : 0;
+  let body = Math.sin(t * 2) * 1.5;
+  if (state === "idle") {
+    rig.lean.to = Math.sin(t * .8) * 1.5; rig.tip.to = Math.sin(t * 1.1) * 5;
+    rig.squash.to = Math.sin(t * 1.6) * .012; rig.gx.to = 0; rig.gy.to = 3;
+  } else if (state === "listening") {
+    rig.lean.to = 3 + Math.sin(t * 1.3) * 2 + level * 4;
+    rig.tip.to = -8 + level * 26 + Math.sin(t * 5) * level * 8;
+    rig.squash.to = level * .05;
+    rig.gx.to = pointer.x * 8; rig.gy.to = pointer.y * 6;
+    rig.ry.to += Math.sin(t * 6) * level * 6;
+    rig.ly.to -= Math.sin(t * 6 + 1) * level * 6;
+  } else if (state === "thinking") {
+    rig.lean.to = Math.sin(t * 2.4) * 4; rig.tip.to = Math.sin(t * 7) * 18;
+    rig.squash.to = 0; rig.gx.to = Math.cos(t * 4) * 8; rig.gy.to = -8 + Math.sin(t * 4) * 3;
+    body = Math.sin(t * 6) * 5;
+    rig.rx.to = 246; rig.ry.to = 262;
+  } else {
+    rig.lean.to = Math.sin(t * 1.9) * 3.5 + talkLevel * 2;
+    rig.tip.to = Math.sin(t * 3) * 8 + talkLevel * 12;
+    rig.squash.to = talkLevel * .045;
+    rig.gx.to = Math.sin(t * .9) * 3; rig.gy.to = 0;
+    rig.ly.to -= talkLevel * 8; rig.ry.to -= talkLevel * 14;
+    rig.rx.to += Math.sin(t * 4) * talkLevel * 8;
+    if (pose === POSES.none) { rig.rx.to = 372 + Math.sin(t * 9) * 18; rig.ry.to = 176; }
+  }
+  for (const part of Object.values(rig)) step(part);
+
+  const sy = 1 + rig.squash.x, sx = 1 - rig.squash.x * .6;
+  $("rig").setAttribute("transform", `translate(0 ${(body + rig.jump.x).toFixed(2)})`);
+  $("upper").setAttribute("transform", `rotate(${rig.lean.x.toFixed(2)} 200 442) translate(200 442) scale(${sx.toFixed(4)} ${sy.toFixed(4)}) translate(-200 -442)`);
+  const tip = rig.tip.x, sprout = `M200 42C196 14 186 2 ${206 + tip * .4} -6C${232 + tip} -16 ${238 + tip} -40 ${216 + tip} ${-46 - Math.abs(tip) * .1}`;
+  $("sprout").setAttribute("d", sprout);
+  $("sprout2").setAttribute("d", sprout);
+
+  if (t > nextBlink) { blinkAt = t; nextBlink = t + 2 + Math.random() * 3.5; }
+  const blink = (t - blinkAt < .13 ? .08 : rig.lid.x) * (1 + (state === "listening" ? level * .14 : 0));
+  for (const [id, cx] of [["eyeL", 166], ["eyeR", 234]]) {
+    $(id).setAttribute("transform", `translate(${(cx + rig.gx.x).toFixed(2)} ${(165 + rig.gy.x).toFixed(2)}) scale(1 ${blink.toFixed(3)}) translate(${-cx} -165)`);
+  }
+  const brow = rig.brow.x;
+  $("browL").setAttribute("d", `M146 ${112 - brow * .6 + rig.gy.x * .3}L186 ${112 + brow * .6 + rig.gy.x * .3}`);
+  $("browR").setAttribute("d", `M214 ${112 + brow * .6 + rig.gy.x * .3}L254 ${112 - brow * .6 + rig.gy.x * .3}`);
+  drawMouth(rig.mouth.x, rig.smile.x);
+  drawArm($("armL1"), $("armL2"), 74, rig.lx.x, rig.ly.x);
+  drawArm($("armR1"), $("armR2"), 326, rig.rx.x, rig.ry.x);
+
+  const at = (id, x, y) => $(id).setAttribute("transform", `translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${rig.pop.x.toFixed(3)})`);
+  at("spyglass", rig.rx.x, rig.ry.x);
+  at("clipboard", rig.rx.x - 30, rig.ry.x);
+  at("megaphone", rig.lx.x, rig.ly.x);
+  at("teacup", (rig.lx.x + rig.rx.x) / 2, rig.ly.x - 2);
+  at("umbrella", rig.rx.x, rig.ry.x);
+
+  const waves = state === "listening" ? level : 0;
+  $("waves").setAttribute("opacity", Math.min(1, waves * 1.6).toFixed(2));
+  $("waves").setAttribute("transform", `translate(200 150) scale(${(.92 + waves * .14).toFixed(3)}) translate(-200 -150)`);
+  [...$("orbit").children].forEach((dot, i) => {
+    const angle = t * 3.4 + i * 2.09;
+    dot.setAttribute("cx", (200 + Math.cos(angle) * 170).toFixed(1));
+    dot.setAttribute("cy", (20 + Math.sin(angle) * 34).toFixed(1));
+    dot.setAttribute("opacity", state === "thinking" ? .4 + (Math.sin(angle) + 1) * .3 : 0);
+  });
+  const since = t - burstAt, grow = 1 - Math.pow(1 - Math.min(1, since / .8), 3);
+  for (const spark of sparks) {
+    spark.dot.setAttribute("cx", (200 + Math.cos(spark.angle) * spark.reach * grow).toFixed(1));
+    spark.dot.setAttribute("cy", (190 + Math.sin(spark.angle) * spark.reach * grow).toFixed(1));
+    spark.dot.setAttribute("opacity", since < .8 ? (1 - since / .8).toFixed(2) : 0);
+  }
+}
+requestAnimationFrame(frame);
+
+addEventListener("pointermove", event => {
+  pointer = { x: event.clientX / innerWidth * 2 - 1, y: event.clientY / innerHeight * 2 - 1 };
+});
+
+const say = text => { $("caption").textContent = text; };
+
+function startSpeech() {
+  const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!Speech) { say("Speech recognition needs Chrome."); return; }
+  recognition = new Speech();
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.lang = "en-US";
+  recognition.onresult = event => {
+    let live = "";
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      if (talking) continue;
+      const text = event.results[i][0].transcript.trim();
+      if (event.results[i].isFinal) heard = (heard + " " + text).trim();
+      else live += " " + text;
+    }
+    interim = live.trim();
+    if (!talking && state === "listening" && (heard || interim)) say((heard + " " + interim).trim().split(/\s+/).slice(-14).join(" "));
+  };
+  recognition.onerror = event => {
+    if (event.error !== "no-speech" && event.error !== "aborted") say(`Speech recognition stopped (${event.error}).`);
+  };
+  recognition.onend = () => { if (recording) try { recognition.start(); } catch (error) {} };
+  recognition.start();
+}
+
+function resetSegment() {
+  chunks = [];
+  total = 0;
+  speaking = false;
+  spoken = 0;
+  silence = 0;
+}
+
+function onAudio(event) {
+  if (!recording || talking) { micLevel = 0; return; }
+  const input = event.inputBuffer.getChannelData(0);
+  const seconds = input.length / context.sampleRate;
+  let sum = 0;
+  for (let i = 0; i < input.length; i++) sum += input[i] * input[i];
+  const rms = Math.sqrt(sum / input.length);
+  floor = rms < floor ? floor * 0.8 + rms * 0.2 : floor * 0.995 + rms * 0.005;
+  const voiced = rms > Math.max(0.008, floor * 2.5);
+  micLevel = Math.min(1, rms * 12);
+
+  chunks.push(Float32Array.from(input));
+  total += input.length;
+  if (!speaking && !voiced) {
+    while (chunks.length > 1 && (total - chunks[0].length) / context.sampleRate >= PRE_ROLL) total -= chunks.shift().length;
+    return;
+  }
+  speaking = true;
+  if (voiced) { spoken += seconds; silence = 0; } else { silence += seconds; }
+
+  const length = total / context.sampleRate;
+  if (length >= MAX_SECONDS) return finishSegment();
+  if (silence >= PAUSE_SECONDS) {
+    if (length - silence >= MIN_SECONDS) return finishSegment();
+    if (spoken > 0.5) say("Keep going.");
+  }
+}
+
+function finishSegment() {
+  const samples = new Float32Array(total);
+  let offset = 0;
+  for (const chunk of chunks) { samples.set(chunk, offset); offset += chunk.length; }
+  const rate = context.sampleRate;
+  resetSegment();
+  talking = true;
+  state = "thinking";
+  say("Hmm.");
+  setTimeout(() => {
+    const text = (heard + " " + interim).trim();
+    heard = "";
+    interim = "";
+    queue.push({ samples, rate, text });
+    work();
+  }, 500);
+}
+
+async function wavBase64(samples, rate) {
+  const offline = new OfflineAudioContext(1, Math.round(samples.length * 16000 / rate), 16000);
+  const buffer = offline.createBuffer(1, samples.length, rate);
+  buffer.copyToChannel(samples, 0);
+  const node = offline.createBufferSource();
+  node.buffer = buffer;
+  node.connect(offline.destination);
+  node.start();
+  const pcm = (await offline.startRendering()).getChannelData(0);
+  const view = new DataView(new ArrayBuffer(44 + pcm.length * 2));
+  const text = (at, value) => [...value].forEach((c, i) => view.setUint8(at + i, c.charCodeAt(0)));
+  text(0, "RIFF"); view.setUint32(4, 36 + pcm.length * 2, true); text(8, "WAVEfmt ");
+  view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+  view.setUint32(24, 16000, true); view.setUint32(28, 32000, true);
+  view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+  text(36, "data"); view.setUint32(40, pcm.length * 2, true);
+  pcm.forEach((v, i) => view.setInt16(44 + i * 2, Math.max(-1, Math.min(1, v)) * 32767, true));
+  let binary = "";
+  const bytes = new Uint8Array(view.buffer);
+  for (let i = 0; i < bytes.length; i += 32768) binary += String.fromCharCode(...bytes.subarray(i, i + 32768));
+  return btoa(binary);
+}
+
+async function playBytes(bytes) {
+  const buffer = await context.decodeAudioData(bytes);
+  await new Promise(resolve => {
+    voice = context.createBufferSource();
+    voice.buffer = buffer;
+    voice.connect(voiceNode);
+    voice.onended = resolve;
+    state = "speaking";
+    voice.start();
+  });
+  voice = null;
+}
+
+const listen = () => {
+  resetSegment();
+  heard = "";
+  interim = "";
+  talking = false;
+  if (recording) state = "listening";
+};
+
+async function work() {
+  if (working) return;
+  working = true;
+  while (queue.length) {
+    const item = queue.shift();
+    try {
+      const response = await api("/predict", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wav_base64: await wavBase64(item.samples, item.rate), transcript: item.text })
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error);
+      const leader = show(result);
+      const row = addRow(result, item.text, leader);
+      if (item.text) await respond(item.text, row, leader);
+      else say("I heard you, but no words.");
+    } catch (error) {
+      say(`Sorry, that failed: ${error.message}.`);
+    }
+    listen();
+  }
+  working = false;
+}
+
+function show(result) {
+  const distance = Object.fromEntries(TRAITS.map(t => [t, result.scores[t] - result.band_centers[t]]));
+  const leader = TRAITS.reduce((a, b) => distance[b] > distance[a] ? b : a);
+  for (const trait of TRAITS) {
+    const part = Math.max(-1, Math.min(1, distance[trait] / SCALE)) * 50;
+    bars[trait].fill.style.left = (part < 0 ? 50 + part : 50) + "%";
+    bars[trait].fill.style.width = Math.abs(part) + "%";
+    bars[trait].item.classList.toggle("lead", trait === leader);
+  }
+  document.documentElement.style.setProperty("--tint", TINTS[leader]);
+  const label = $("detected");
+  label.style.setProperty("--lead", `var(--${leader})`);
+  label.textContent = NAMES[leader];
+  label.hidden = false;
+  label.style.animation = "none";
+  void label.offsetWidth;
+  label.style.animation = "";
+  setPose(leader);
+  return leader;
+}
+
+async function respond(text, row, leader) {
+  const response = await api("/reply", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ transcript: text, trait: leader, history })
+  });
+  const reply = await response.json();
+  if (!response.ok) throw new Error(reply.error);
+  const clean = reply.text.replace(/<break[^>]*>\s*/g, "");
+  history = [...history, { role: "user", content: text }, { role: "assistant", content: reply.text }].slice(-6);
+  row.querySelector("small").textContent = "Momo: " + clean;
+  say(clean);
+  if (reply.audio_base64) {
+    await playBytes(Uint8Array.from(atob(reply.audio_base64), c => c.charCodeAt(0)).buffer);
+  } else {
+    say(`Voice failed: ${reply.speech_error}. Momo said: ${clean}`);
+    await new Promise(resolve => setTimeout(resolve, 3000));
+  }
+}
+
+function addRow(result, text, leader) {
+  const row = document.createElement("tr");
+  const said = document.createElement("td");
+  said.textContent = text || "(no words)";
+  said.appendChild(document.createElement("small"));
+  row.appendChild(said);
+  for (const trait of TRAITS) {
+    const cell = document.createElement("td");
+    cell.textContent = result.scores[trait].toFixed(2);
+    row.appendChild(cell);
+  }
+  const who = document.createElement("td");
+  who.textContent = NAMES[leader];
+  row.appendChild(who);
+  $("rows").prepend(row);
+  return row;
+}
+
+async function start() {
+  stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  context = new AudioContext();
+  await context.resume();
+  voiceNode = context.createAnalyser();
+  voiceNode.fftSize = 1024;
+  speechData = new Float32Array(voiceNode.fftSize);
+  voiceNode.connect(context.destination);
+  source = context.createMediaStreamSource(stream);
+  processor = context.createScriptProcessor(2048, 1, 1);
+  processor.onaudioprocess = onAudio;
+  source.connect(processor);
+  processor.connect(context.destination);
+  resetSegment();
+  recording = true;
+  talking = true;
+  startSpeech();
+  $("toggle").textContent = "Stop";
+  try {
+    const response = await api("/greeting", { cache: "no-store" });
+    if (response.ok) {
+      say(response.headers.get("X-Greeting"));
+      await playBytes(await response.arrayBuffer());
+    }
+  } catch (error) {}
+  listen();
+  say("I'm listening.");
+}
+
+function stop() {
+  recording = false;
+  talking = false;
+  if (voice) voice.stop();
+  if (recognition) recognition.stop();
+  processor.disconnect();
+  source.disconnect();
+  stream.getTracks().forEach(track => track.stop());
+  context.close();
+  voiceNode = null;
+  micLevel = 0;
+  resetSegment();
+  state = "idle";
+  setPose("none");
+  $("detected").hidden = true;
+  document.documentElement.style.setProperty("--tint", "#f6edda");
+  $("toggle").textContent = "Start listening";
+  say("Press start and say hello.");
+}
+
+async function unlock(candidate) {
+  demoKey = candidate;
+  let open = false;
+  try {
+    open = (await api("/check")).ok;
+  } catch (error) {
+    $("lockMessage").textContent = "Could not reach the demo server.";
+  }
+  if (open) {
+    try { sessionStorage.setItem("demo-key", candidate); } catch (error) {}
+  }
+  $("lock").hidden = open;
+  return open;
+}
+
+$("lock").onsubmit = async event => {
+  event.preventDefault();
+  $("lockMessage").textContent = "";
+  if (!await unlock($("key").value.trim()) && !$("lockMessage").textContent) $("lockMessage").textContent = "That key is not valid.";
+};
+
+setPose("none");
+let saved = "";
+try { saved = sessionStorage.getItem("demo-key") || ""; } catch (error) {}
+unlock(saved);
+$("toggle").onclick = () => recording ? stop() : start().catch(error => say(`Microphone blocked: ${error.message}.`));
+</script>
+</body>
+</html>
