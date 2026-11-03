@@ -128,7 +128,7 @@ const POSES = {
   agreeableness: { l: [162, 344], r: [238, 344], props: ["teacup"], brow: -3, smile: 22 },
   neuroticism: { l: [50, 300], r: [352, 236], props: ["umbrella"], brow: -14, smile: -8 }
 };
-const MIN_SECONDS = 5, MAX_SECONDS = 15, PAUSE_SECONDS = 0.7, MIN_SPOKEN = 0.25, BARGE_LEVEL = 0.05, BARGE_SECONDS = 0.35, PRE_ROLL = 0.3, SCALE = 0.2, FRAME = 1000 / 30;
+const MIN_SECONDS = 5, MAX_SECONDS = 15, PAUSE_SECONDS = 0.6, VOICE_RATE = 24000, MIN_SPOKEN = 0.25, BARGE_LEVEL = 0.05, BARGE_SECONDS = 0.35, PRE_ROLL = 0.3, SCALE = 0.2, FRAME = 1000 / 30;
 const API = ["localhost", "127.0.0.1"].includes(location.hostname) ? "" : "https://15-235-100-243.sslip.io";
 let demoKey = "";
 const api = (path, options = {}) => fetch(API + path, { ...options, headers: { ...options.headers, "X-Demo-Key": demoKey } });
@@ -462,11 +462,20 @@ async function wavBase64(samples, rate) {
   return btoa(binary);
 }
 
+function pcmBuffer(encoded) {
+  const bytes = Uint8Array.from(atob(encoded), c => c.charCodeAt(0));
+  const pcm = new Int16Array(bytes.buffer);
+  const buffer = context.createBuffer(1, pcm.length, VOICE_RATE);
+  const channel = buffer.getChannelData(0);
+  for (let i = 0; i < pcm.length; i++) channel[i] = pcm[i] / 32768;
+  return buffer;
+}
+
 function schedule(buffer) {
   const node = context.createBufferSource();
   node.buffer = buffer;
   node.connect(voiceNode);
-  const at = Math.max(context.currentTime, nextStart);
+  const at = Math.max(context.currentTime + 0.03, nextStart);
   nextStart = at + buffer.duration;
   voices.push(node);
   state = "speaking";
@@ -532,14 +541,12 @@ async function respond(text) {
       for (const line of lines) {
         const item = JSON.parse(line);
         if (item.error) throw new Error(item.error);
-        said = (said + " " + item.text.replace(/\[[^\]]*\]\s*/g, "")).trim();
-        say(said);
-        if (item.audio_base64) {
-          const bytes = Uint8Array.from(atob(item.audio_base64), c => c.charCodeAt(0));
-          last = schedule(await context.decodeAudioData(bytes.buffer));
-        } else {
-          say(`Voice failed: ${item.speech_error}. Momo said: ${said}`);
+        if (item.speech_error) say(`Voice failed: ${item.speech_error}. Momo said: ${said}`);
+        if (item.text) {
+          said = (said + " " + item.text.replace(/\[[^\]]*\]\s*/g, "")).trim();
+          say(said);
         }
+        if (item.pcm) last = schedule(pcmBuffer(item.pcm));
       }
     }
     await last;
@@ -574,7 +581,7 @@ function addRow(result, text, leader) {
 
 async function start() {
   stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
-  context = new AudioContext();
+  context = new AudioContext({ sampleRate: VOICE_RATE });
   await context.resume();
   voiceNode = context.createAnalyser();
   voiceNode.fftSize = 1024;
