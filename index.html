@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
 <title>Momo</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -128,7 +129,7 @@ const POSES = {
   agreeableness: { l: [162, 344], r: [238, 344], props: ["teacup"], brow: -3, smile: 22 },
   neuroticism: { l: [50, 300], r: [352, 236], props: ["umbrella"], brow: -14, smile: -8 }
 };
-const MIN_SECONDS = 5, MAX_SECONDS = 15, PAUSE_SECONDS = 0.6, VOICE_RATE = 24000, MIN_SPOKEN = 0.25, BARGE_LEVEL = 0.05, BARGE_SECONDS = 0.35, PRE_ROLL = 0.3, SCALE = 0.2, FRAME = 1000 / 30;
+const MIN_SECONDS = 5, MAX_SECONDS = 15, PAUSE_SECONDS = 0.6, FINAL_WAIT_MS = 450, VOICE_RATE = 24000, MIN_SPOKEN = 0.25, BARGE_LEVEL = 0.05, BARGE_SECONDS = 0.35, PRE_ROLL = 0.3, SCALE = 0.2, FRAME = 1000 / 30;
 const API = ["localhost", "127.0.0.1"].includes(location.hostname) ? "" : "https://15-235-100-243.sslip.io";
 let demoKey = "";
 const api = (path, options = {}) => fetch(API + path, { ...options, headers: { ...options.headers, "X-Demo-Key": demoKey } });
@@ -147,7 +148,7 @@ for (const trait of TRAITS) {
 let recording = false, context, stream, source, processor, recognition, voiceNode, speechData;
 let voices = [], nextStart = 0, reply = null, loud = 0, leader = null, predicting = false, voiceLog = [], lastSaid = "";
 let chunks = [], total = 0, floor = 0.01, speaking = false, spoken = 0, silence = 0;
-let heard = "", interim = "", talking = false, history = [];
+let heard = "", interim = "", talking = false, settling = false, history = [];
 let state = "idle", pose = POSES.none, micLevel = 0, pointer = { x: 0, y: 0 };
 
 const spring = (x, stiff, damp) => ({ x, to: x, v: 0, stiff, damp });
@@ -311,7 +312,7 @@ function startSpeech() {
   recognition.onresult = event => {
     let live = "";
     for (let i = event.resultIndex; i < event.results.length; i++) {
-      if (talking) continue;
+      if (talking && !settling) continue;
       const text = event.results[i][0].transcript.trim();
       if (event.results[i].isFinal) heard = (heard + " " + text).trim();
       else live += " " + text;
@@ -320,7 +321,8 @@ function startSpeech() {
     if (!talking && state === "listening" && (heard || interim)) say((heard + " " + interim).trim().split(/\s+/).slice(-14).join(" "));
   };
   recognition.onerror = event => {
-    if (event.error !== "no-speech" && event.error !== "aborted") say(`Speech recognition stopped (${event.error}).`);
+    if (event.error === "network" || event.error === "service-not-allowed") say("Speech recognition failed here. Please use Google Chrome.");
+    else if (event.error !== "no-speech" && event.error !== "aborted") say(`Speech recognition stopped (${event.error}).`);
   };
   recognition.onend = () => { if (recording) try { recognition.start(); } catch (error) {} };
   recognition.start();
@@ -382,16 +384,17 @@ function finishSegment() {
   for (const chunk of chunks) { samples.set(chunk, offset); offset += chunk.length; }
   resetSegment();
   talking = true;
+  settling = true;
   state = "thinking";
   runTurn(samples, context.sampleRate);
 }
 
 async function runTurn(samples, rate) {
-  let text = (heard + " " + interim).trim();
-  if (!text) {
-    await new Promise(resolve => setTimeout(resolve, 400));
-    text = (heard + " " + interim).trim();
+  for (let waited = 0; waited < FINAL_WAIT_MS && (interim || !heard); waited += 25) {
+    await new Promise(resolve => setTimeout(resolve, 25));
   }
+  const text = (heard + " " + interim).trim();
+  settling = false;
   heard = "";
   interim = "";
   if (text) {
@@ -654,9 +657,20 @@ $("lock").onsubmit = async event => {
 };
 
 setPose("none");
-let saved = "";
-try { saved = sessionStorage.getItem("demo-key") || ""; } catch (error) {}
-unlock(saved);
+if (window.SpeechRecognition || window.webkitSpeechRecognition) {
+  const urlKey = new URLSearchParams(location.search).get("key");
+  if (urlKey !== null) window.history.replaceState(null, "", location.pathname);
+  let saved = urlKey || "";
+  try { saved = saved || sessionStorage.getItem("demo-key") || ""; } catch (error) {}
+  unlock(saved).then(open => {
+    if (!open && urlKey && !$("lockMessage").textContent) $("lockMessage").textContent = "That key is not valid.";
+  });
+} else {
+  $("key").hidden = true;
+  $("lock").querySelector("button").hidden = true;
+  $("lockMessage").textContent = "This demo needs speech recognition. Please open it in Google Chrome.";
+  $("lock").hidden = false;
+}
 $("toggle").onclick = () => recording ? stop() : start().catch(error => say(`Microphone blocked: ${error.message}.`));
 </script>
 </body>
