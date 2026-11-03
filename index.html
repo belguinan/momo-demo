@@ -128,7 +128,7 @@ const POSES = {
   agreeableness: { l: [162, 344], r: [238, 344], props: ["teacup"], brow: -3, smile: 22 },
   neuroticism: { l: [50, 300], r: [352, 236], props: ["umbrella"], brow: -14, smile: -8 }
 };
-const MIN_SECONDS = 5, MAX_SECONDS = 15, PAUSE_SECONDS = 1.2, PRE_ROLL = 0.3, SCALE = 0.2, FRAME = 1000 / 30;
+const MIN_SECONDS = 5, MAX_SECONDS = 15, PAUSE_SECONDS = 0.7, MIN_SPOKEN = 0.25, BARGE_LEVEL = 0.05, BARGE_SECONDS = 0.35, PRE_ROLL = 0.3, SCALE = 0.2, FRAME = 1000 / 30;
 const API = ["localhost", "127.0.0.1"].includes(location.hostname) ? "" : "https://15-235-100-243.sslip.io";
 let demoKey = "";
 const api = (path, options = {}) => fetch(API + path, { ...options, headers: { ...options.headers, "X-Demo-Key": demoKey } });
@@ -144,9 +144,10 @@ for (const trait of TRAITS) {
   bars[trait] = { item, fill: item.querySelector(".fill") };
 }
 
-let recording = false, context, stream, source, processor, recognition, voice, voiceNode, speechData;
+let recording = false, context, stream, source, processor, recognition, voiceNode, speechData;
+let voices = [], nextStart = 0, reply = null, loud = 0, leader = null, predicting = false, voiceLog = [], lastSaid = "";
 let chunks = [], total = 0, floor = 0.01, speaking = false, spoken = 0, silence = 0;
-let heard = "", interim = "", queue = [], working = false, talking = false, history = [];
+let heard = "", interim = "", talking = false, history = [];
 let state = "idle", pose = POSES.none, micLevel = 0, pointer = { x: 0, y: 0 };
 
 const spring = (x, stiff, damp) => ({ x, to: x, v: 0, stiff, damp });
@@ -334,12 +335,19 @@ function resetSegment() {
 }
 
 function onAudio(event) {
-  if (!recording || talking) { micLevel = 0; return; }
+  if (!recording) { micLevel = 0; return; }
   const input = event.inputBuffer.getChannelData(0);
   const seconds = input.length / context.sampleRate;
   let sum = 0;
   for (let i = 0; i < input.length; i++) sum += input[i] * input[i];
   const rms = Math.sqrt(sum / input.length);
+  if (talking) {
+    micLevel = 0;
+    if (state !== "speaking") { loud = 0; return; }
+    loud = rms > Math.max(BARGE_LEVEL, floor * 6) ? loud + seconds : Math.max(0, loud - seconds);
+    if (loud >= BARGE_SECONDS) interrupt();
+    return;
+  }
   floor = rms < floor ? floor * 0.8 + rms * 0.2 : floor * 0.995 + rms * 0.005;
   const voiced = rms > Math.max(0.008, floor * 2.5);
   micLevel = Math.min(1, rms * 12);
@@ -353,30 +361,82 @@ function onAudio(event) {
   speaking = true;
   if (voiced) { spoken += seconds; silence = 0; } else { silence += seconds; }
 
-  const length = total / context.sampleRate;
-  if (length >= MAX_SECONDS) return finishSegment();
+  if (total / context.sampleRate >= MAX_SECONDS) return finishSegment();
   if (silence >= PAUSE_SECONDS) {
-    if (length - silence >= MIN_SECONDS) return finishSegment();
-    if (spoken > 0.5) say("Keep going.");
+    if (spoken >= MIN_SPOKEN) return finishSegment();
+    resetSegment();
   }
+}
+
+function interrupt() {
+  loud = 0;
+  if (reply) reply.abort();
+  voices.forEach(node => node.stop());
+  voices = [];
+  nextStart = 0;
 }
 
 function finishSegment() {
   const samples = new Float32Array(total);
   let offset = 0;
   for (const chunk of chunks) { samples.set(chunk, offset); offset += chunk.length; }
-  const rate = context.sampleRate;
   resetSegment();
   talking = true;
   state = "thinking";
-  say("Hmm.");
-  setTimeout(() => {
-    const text = (heard + " " + interim).trim();
-    heard = "";
-    interim = "";
-    queue.push({ samples, rate, text });
-    work();
-  }, 500);
+  runTurn(samples, context.sampleRate);
+}
+
+async function runTurn(samples, rate) {
+  let text = (heard + " " + interim).trim();
+  if (!text) {
+    await new Promise(resolve => setTimeout(resolve, 400));
+    text = (heard + " " + interim).trim();
+  }
+  heard = "";
+  interim = "";
+  if (text) {
+    learn(samples, rate, text);
+    try {
+      await respond(text);
+    } catch (error) {
+      say(`Sorry, that failed: ${error.message}.`);
+    }
+  }
+  listen();
+}
+
+function learn(samples, rate, text) {
+  voiceLog.push({ samples, text });
+  let seconds = voiceLog.reduce((sum, item) => sum + item.samples.length / rate, 0);
+  while (voiceLog.length > 1 && seconds - voiceLog[0].samples.length / rate >= MAX_SECONDS) {
+    seconds -= voiceLog.shift().samples.length / rate;
+  }
+  if (seconds >= MIN_SECONDS && !predicting) predict(rate);
+}
+
+async function predict(rate) {
+  predicting = true;
+  const items = voiceLog.slice();
+  const samples = new Float32Array(items.reduce((sum, item) => sum + item.samples.length, 0));
+  let offset = 0;
+  for (const item of items) { samples.set(item.samples, offset); offset += item.samples.length; }
+  const text = items.map(item => item.text).join(" ");
+  try {
+    const response = await api("/predict", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ wav_base64: await wavBase64(samples.slice(-MAX_SECONDS * rate), rate), transcript: text })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+    if (recording) {
+      leader = show(result);
+      addRow(result, text, leader).querySelector("small").textContent = "Momo: " + lastSaid;
+    }
+  } catch (error) {
+    console.error("prediction failed", error);
+  }
+  predicting = false;
 }
 
 async function wavBase64(samples, rate) {
@@ -402,17 +462,22 @@ async function wavBase64(samples, rate) {
   return btoa(binary);
 }
 
-async function playBytes(bytes) {
-  const buffer = await context.decodeAudioData(bytes);
-  await new Promise(resolve => {
-    voice = context.createBufferSource();
-    voice.buffer = buffer;
-    voice.connect(voiceNode);
-    voice.onended = resolve;
-    state = "speaking";
-    voice.start();
+function schedule(buffer) {
+  const node = context.createBufferSource();
+  node.buffer = buffer;
+  node.connect(voiceNode);
+  const at = Math.max(context.currentTime, nextStart);
+  nextStart = at + buffer.duration;
+  voices.push(node);
+  state = "speaking";
+  const ended = new Promise(resolve => {
+    node.onended = () => {
+      voices = voices.filter(item => item !== node);
+      resolve();
+    };
   });
-  voice = null;
+  node.start(at);
+  return ended;
 }
 
 const listen = () => {
@@ -422,31 +487,6 @@ const listen = () => {
   talking = false;
   if (recording) state = "listening";
 };
-
-async function work() {
-  if (working) return;
-  working = true;
-  while (queue.length) {
-    const item = queue.shift();
-    try {
-      const response = await api("/predict", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wav_base64: await wavBase64(item.samples, item.rate), transcript: item.text })
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error);
-      const leader = show(result);
-      const row = addRow(result, item.text, leader);
-      if (item.text) await respond(item.text, row, leader);
-      else say("I heard you, but no words.");
-    } catch (error) {
-      say(`Sorry, that failed: ${error.message}.`);
-    }
-    listen();
-  }
-  working = false;
-}
 
 function show(result) {
   const distance = Object.fromEntries(TRAITS.map(t => [t, result.scores[t] - result.band_centers[t]]));
@@ -469,23 +509,48 @@ function show(result) {
   return leader;
 }
 
-async function respond(text, row, leader) {
-  const response = await api("/reply", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ transcript: text, trait: leader, history })
-  });
-  const reply = await response.json();
-  if (!response.ok) throw new Error(reply.error);
-  const clean = reply.text.replace(/<break[^>]*>\s*/g, "");
-  history = [...history, { role: "user", content: text }, { role: "assistant", content: reply.text }].slice(-6);
-  row.querySelector("small").textContent = "Momo: " + clean;
-  say(clean);
-  if (reply.audio_base64) {
-    await playBytes(Uint8Array.from(atob(reply.audio_base64), c => c.charCodeAt(0)).buffer);
-  } else {
-    say(`Voice failed: ${reply.speech_error}. Momo said: ${clean}`);
-    await new Promise(resolve => setTimeout(resolve, 3000));
+async function respond(text) {
+  const control = new AbortController();
+  reply = control;
+  let said = "", last = Promise.resolve();
+  try {
+    const response = await api("/reply", {
+      method: "POST",
+      signal: control.signal,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ transcript: text, trait: leader, history })
+    });
+    if (!response.ok) throw new Error((await response.json()).error);
+    const reader = response.body.getReader(), decoder = new TextDecoder();
+    let pending = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      pending += decoder.decode(value, { stream: true });
+      const lines = pending.split("\n");
+      pending = lines.pop();
+      for (const line of lines) {
+        const item = JSON.parse(line);
+        if (item.error) throw new Error(item.error);
+        said = (said + " " + item.text.replace(/\[[^\]]*\]\s*/g, "")).trim();
+        say(said);
+        if (item.audio_base64) {
+          const bytes = Uint8Array.from(atob(item.audio_base64), c => c.charCodeAt(0));
+          last = schedule(await context.decodeAudioData(bytes.buffer));
+        } else {
+          say(`Voice failed: ${item.speech_error}. Momo said: ${said}`);
+        }
+      }
+    }
+    await last;
+  } catch (error) {
+    if (error.name !== "AbortError") throw error;
+  } finally {
+    reply = null;
+    if (said) {
+      lastSaid = said;
+      history = [...history, { role: "user", content: text }, { role: "assistant", content: said }].slice(-6);
+    }
   }
 }
 
@@ -508,7 +573,7 @@ function addRow(result, text, leader) {
 }
 
 async function start() {
-  stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
   context = new AudioContext();
   await context.resume();
   voiceNode = context.createAnalyser();
@@ -528,18 +593,22 @@ async function start() {
   try {
     const response = await api("/greeting", { cache: "no-store" });
     if (response.ok) {
-      say(response.headers.get("X-Greeting"));
-      await playBytes(await response.arrayBuffer());
+      const greeting = response.headers.get("X-Greeting");
+      say(greeting);
+      history = [{ role: "assistant", content: greeting }];
+      await schedule(await context.decodeAudioData(await response.arrayBuffer()));
     }
   } catch (error) {}
   listen();
-  say("I'm listening.");
 }
 
 function stop() {
   recording = false;
   talking = false;
-  if (voice) voice.stop();
+  interrupt();
+  leader = null;
+  voiceLog = [];
+  history = [];
   if (recognition) recognition.stop();
   processor.disconnect();
   source.disconnect();
