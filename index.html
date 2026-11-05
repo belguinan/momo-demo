@@ -72,7 +72,7 @@
 </style>
 </head>
 <body class="idle">
-<form id="lock" hidden>
+<form id="lock">
   <h1>Momo</h1>
   <input id="key" type="password" aria-label="Access key" placeholder="Access key" autocomplete="off" required>
   <button type="submit">Unlock</button>
@@ -139,7 +139,7 @@ const POSES = {
 };
 const MIN_SECONDS = 5, MAX_SECONDS = 15, PAUSE_SECONDS = 0.6, FINAL_WAIT_MS = 450, VOICE_RATE = 24000, MIN_SPOKEN = 0.25, BARGE_LEVEL = 0.05, BARGE_SECONDS = 0.35, PRE_ROLL = 0.3, SCALE = 0.2, FRAME = 1000 / 30;
 const API = ["localhost", "127.0.0.1"].includes(location.hostname) ? "" : "https://15-235-100-243.sslip.io";
-let demoKey = "";
+let demoKey = "", conversation = "", expiresAt = 0, expiryTimer;
 const api = (path, options = {}) => fetch(API + path, { ...options, headers: { ...options.headers, "X-Demo-Key": demoKey } });
 const $ = id => document.getElementById(id);
 
@@ -378,6 +378,7 @@ function resetSegment() {
 
 function onAudio(event) {
   if (!recording) { micLevel = 0; return; }
+  if (expireConversation()) return;
   const input = event.inputBuffer.getChannelData(0);
   const seconds = input.length / context.sampleRate;
   let sum = 0;
@@ -554,6 +555,7 @@ function show(result) {
 }
 
 async function respond(turn) {
+  if (expireConversation()) return;
   const text = turn.text;
   const control = new AbortController();
   reply = control;
@@ -562,9 +564,14 @@ async function respond(turn) {
     const response = await api("/reply", {
       method: "POST",
       signal: control.signal,
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-Conversation": conversation },
       body: JSON.stringify({ transcript: text, trait: leader, history })
     });
+    if (response.status === 410 && turn.id === session) {
+      stop();
+      say("Conversation expired. Tap Momo to start a new one.");
+      return;
+    }
     if (!response.ok) throw new Error((await response.json()).error);
     const reader = response.body.getReader(), decoder = new TextDecoder();
     let pending = "";
@@ -617,8 +624,23 @@ function addRow(result, text, leader) {
   return row;
 }
 
+function expireConversation() {
+  if (!recording || Date.now() < expiresAt) return false;
+  stop();
+  say("Conversation expired. Tap Momo to start a new one.");
+  return true;
+}
+
+document.addEventListener("visibilitychange", expireConversation);
+window.addEventListener("pageshow", expireConversation);
+
 async function start() {
   const id = ++session;
+  const response = await api("/conversation", { method: "POST" });
+  if (!response.ok) throw new Error("Could not open a conversation. Check the demo access key.");
+  const opened = await response.json();
+  conversation = opened.conversation;
+  expiresAt = Date.now() + 3600000;
   stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
   context = new AudioContext({ sampleRate: VOICE_RATE });
   await context.resume();
@@ -634,6 +656,8 @@ async function start() {
   resetSegment();
   recording = true;
   opening = false;
+  if (expireConversation()) return;
+  expiryTimer = setTimeout(expireConversation, expiresAt - Date.now());
   document.body.classList.remove("idle");
   talking = true;
   startSpeech(id);
@@ -652,6 +676,9 @@ async function start() {
 }
 
 function stop() {
+  clearTimeout(expiryTimer);
+  conversation = "";
+  heard = interim = "";
   session++;
   predicting = false;
   settling = false;
@@ -717,10 +744,10 @@ if (window.SpeechRecognition || window.webkitSpeechRecognition) {
 }
 let opening = false;
 function toggle() {
-  if (opening) return;
+  if (opening || !$("lock").hidden) return;
   if (recording) return stop();
   opening = true;
-  start().catch(error => { opening = false; say(`Microphone blocked: ${error.message}.`); });
+  start().catch(error => { opening = false; say(error.message); });
 }
 $("momo").onclick = toggle;
 $("caption").onclick = () => { if (!recording) toggle(); };
