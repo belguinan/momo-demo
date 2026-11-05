@@ -181,7 +181,7 @@ function setRadar(values, leader) {
 }
 
 let recording = false, context, stream, source, processor, recognition, voiceNode, speechData;
-let voices = [], nextStart = 0, reply = null, loud = 0, leader = null, predicting = false, voiceLog = [], lastSaid = "";
+let voices = [], nextStart = 0, reply = null, loud = 0, leader = null, predicting = false, voiceLog = [], session = 0;
 let chunks = [], total = 0, floor = 0.01, speaking = false, spoken = 0, silence = 0;
 let heard = "", interim = "", talking = false, settling = false, history = [];
 let state = "idle", pose = POSES.none, micLevel = 0, pointer = { x: 0, y: 0 };
@@ -340,7 +340,7 @@ addEventListener("pointermove", event => {
 
 const say = text => { $("caption").textContent = text; };
 
-function startSpeech() {
+function startSpeech(id) {
   const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!Speech) { say("Speech recognition needs Chrome."); return; }
   recognition = new Speech();
@@ -348,6 +348,7 @@ function startSpeech() {
   recognition.interimResults = true;
   recognition.lang = "en-US";
   recognition.onresult = event => {
+    if (id !== session) return;
     let live = "";
     for (let i = event.resultIndex; i < event.results.length; i++) {
       if (talking && !settling) continue;
@@ -359,10 +360,11 @@ function startSpeech() {
     if (!talking && state === "listening" && (heard || interim)) say((heard + " " + interim).trim().split(/\s+/).slice(-14).join(" "));
   };
   recognition.onerror = event => {
+    if (id !== session) return;
     if (event.error === "network" || event.error === "service-not-allowed") say("Speech recognition failed here. Please use Google Chrome.");
     else if (event.error !== "no-speech" && event.error !== "aborted") say(`Speech recognition stopped (${event.error}).`);
   };
-  recognition.onend = () => { if (recording) try { recognition.start(); } catch (error) {} };
+  recognition.onend = () => { if (id === session && recording) try { recognition.start(); } catch (error) {} };
   recognition.start();
 }
 
@@ -424,38 +426,40 @@ function finishSegment() {
   talking = true;
   settling = true;
   state = "thinking";
-  runTurn(samples, context.sampleRate);
+  runTurn(samples, context.sampleRate, session);
 }
 
-async function runTurn(samples, rate) {
+async function runTurn(samples, rate, id) {
   for (let waited = 0; waited < FINAL_WAIT_MS && (interim || !heard); waited += 25) {
     await new Promise(resolve => setTimeout(resolve, 25));
   }
+  if (id !== session) return;
   const text = (heard + " " + interim).trim();
   settling = false;
   heard = "";
   interim = "";
   if (text) {
-    learn(samples, rate, text);
+    const turn = { id, text, said: "", row: null };
+    learn(samples, rate, turn);
     try {
-      await respond(text);
+      await respond(turn);
     } catch (error) {
-      say(`Sorry, that failed: ${error.message}.`);
+      if (id === session) say(`Sorry, that failed: ${error.message}.`);
     }
   }
-  listen();
+  if (id === session) listen();
 }
 
-function learn(samples, rate, text) {
-  voiceLog.push({ samples, text });
+function learn(samples, rate, turn) {
+  voiceLog.push({ samples, text: turn.text });
   let seconds = voiceLog.reduce((sum, item) => sum + item.samples.length / rate, 0);
-  while (voiceLog.length > 1 && seconds - voiceLog[0].samples.length / rate >= MAX_SECONDS) {
+  while (voiceLog.length > 1 && seconds > MAX_SECONDS) {
     seconds -= voiceLog.shift().samples.length / rate;
   }
-  if (seconds >= MIN_SECONDS && !predicting) predict(rate);
+  if (seconds >= MIN_SECONDS && !predicting) predict(rate, turn);
 }
 
-async function predict(rate) {
+async function predict(rate, turn) {
   predicting = true;
   const items = voiceLog.slice();
   const samples = new Float32Array(items.reduce((sum, item) => sum + item.samples.length, 0));
@@ -466,18 +470,19 @@ async function predict(rate) {
     const response = await api("/predict", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ wav_base64: await wavBase64(samples.slice(-MAX_SECONDS * rate), rate), transcript: text })
+      body: JSON.stringify({ wav_base64: await wavBase64(samples, rate), transcript: text })
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error);
-    if (recording) {
+    if (turn.id === session) {
       leader = show(result);
-      addRow(result, text, leader).querySelector("small").textContent = "Momo: " + lastSaid;
+      turn.row = addRow(result, turn.text, leader).querySelector("small");
+      if (turn.said) turn.row.textContent = "Momo: " + turn.said;
     }
   } catch (error) {
     console.error("prediction failed", error);
   }
-  predicting = false;
+  if (turn.id === session) predicting = false;
 }
 
 async function wavBase64(samples, rate) {
@@ -540,14 +545,16 @@ const listen = () => {
 
 function show(result) {
   const distance = Object.fromEntries(TRAITS.map(t => [t, result.scores[t] - result.band_centers[t]]));
-  const leader = TRAITS.reduce((a, b) => distance[b] > distance[a] ? b : a);
+  const strongest = TRAITS.reduce((a, b) => distance[b] > distance[a] ? b : a);
+  const leader = result.bands[strongest] === "above_average" ? strongest : null;
   setRadar(Object.fromEntries(TRAITS.map(t => [t, 50 + Math.max(-1, Math.min(1, distance[t] / SCALE)) * 50])), leader);
-  document.documentElement.style.setProperty("--tint", TINTS[leader]);
-  setPose(leader);
+  document.documentElement.style.setProperty("--tint", TINTS[leader] || "#f5f5f7");
+  setPose(leader || "none");
   return leader;
 }
 
-async function respond(text) {
+async function respond(turn) {
+  const text = turn.text;
   const control = new AbortController();
   reply = control;
   let said = "", last = Promise.resolve();
@@ -563,6 +570,7 @@ async function respond(text) {
     let pending = "";
     for (;;) {
       const { done, value } = await reader.read();
+      if (turn.id !== session) return;
       if (done) break;
       pending += decoder.decode(value, { stream: true });
       const lines = pending.split("\n");
@@ -582,9 +590,10 @@ async function respond(text) {
   } catch (error) {
     if (error.name !== "AbortError") throw error;
   } finally {
-    reply = null;
-    if (said) {
-      lastSaid = said;
+    if (reply === control) reply = null;
+    if (said && turn.id === session) {
+      turn.said = said;
+      if (turn.row) turn.row.textContent = "Momo: " + said;
       history = [...history, { role: "user", content: text }, { role: "assistant", content: said }].slice(-6);
     }
   }
@@ -602,13 +611,14 @@ function addRow(result, text, leader) {
     row.appendChild(cell);
   }
   const who = document.createElement("td");
-  who.textContent = NAMES[leader];
+  who.textContent = NAMES[leader] || "Neutral";
   row.appendChild(who);
   $("rows").prepend(row);
   return row;
 }
 
 async function start() {
+  const id = ++session;
   stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
   context = new AudioContext({ sampleRate: VOICE_RATE });
   await context.resume();
@@ -626,21 +636,26 @@ async function start() {
   opening = false;
   document.body.classList.remove("idle");
   talking = true;
-  startSpeech();
+  startSpeech(id);
   $("momo").setAttribute("aria-label", "Momo. Tap to stop");
   try {
     const response = await api("/greeting", { cache: "no-store" });
-    if (response.ok) {
+    if (response.ok && id === session) {
       const greeting = response.headers.get("X-Greeting");
       say(greeting);
       history = [{ role: "assistant", content: greeting }];
-      await schedule(await context.decodeAudioData(await response.arrayBuffer()));
+      const buffer = await context.decodeAudioData(await response.arrayBuffer());
+      if (id === session) await schedule(buffer);
     }
   } catch (error) {}
-  listen();
+  if (id === session) listen();
 }
 
 function stop() {
+  session++;
+  predicting = false;
+  settling = false;
+  $("rows").replaceChildren();
   recording = false;
   talking = false;
   interrupt();
