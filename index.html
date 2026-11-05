@@ -634,16 +634,34 @@ function expireConversation() {
 document.addEventListener("visibilitychange", expireConversation);
 window.addEventListener("pageshow", expireConversation);
 
+function closeConversation(token) {
+  if (!token) return;
+  const url = API + "/conversation/close";
+  if (navigator.sendBeacon?.(url, token)) return;
+  fetch(url, { method: "POST", body: token, keepalive: true }).catch(() => {});
+}
+
+window.addEventListener("pagehide", () => {
+  stop();
+  demoKey = "";
+  $("key").value = "";
+  $("lock").hidden = false;
+});
+
 async function start() {
   const id = ++session;
   const response = await api("/conversation", { method: "POST" });
   if (!response.ok) throw new Error("Could not open a conversation. Check the demo access key.");
   const opened = await response.json();
+  if (id !== session) { closeConversation(opened.conversation); return; }
   conversation = opened.conversation;
   expiresAt = Date.now() + 3600000;
-  stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+  const mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+  if (id !== session) { mic.getTracks().forEach(track => track.stop()); return; }
+  stream = mic;
   context = new AudioContext({ sampleRate: VOICE_RATE });
   await context.resume();
+  if (id !== session) return;
   voiceNode = context.createAnalyser();
   voiceNode.fftSize = 1024;
   speechData = new Float32Array(voiceNode.fftSize);
@@ -676,7 +694,9 @@ async function start() {
 }
 
 function stop() {
+  closeConversation(conversation);
   clearTimeout(expiryTimer);
+  opening = false;
   conversation = "";
   heard = interim = "";
   session++;
@@ -690,10 +710,11 @@ function stop() {
   voiceLog = [];
   history = [];
   if (recognition) recognition.stop();
-  processor.disconnect();
-  source.disconnect();
-  stream.getTracks().forEach(track => track.stop());
-  context.close();
+  processor?.disconnect();
+  source?.disconnect();
+  stream?.getTracks().forEach(track => track.stop());
+  context?.close().catch(() => {});
+  processor = source = stream = context = recognition = null;
   voiceNode = null;
   micLevel = 0;
   resetSegment();
@@ -714,9 +735,8 @@ async function unlock(candidate) {
   } catch (error) {
     $("lockMessage").textContent = "Could not reach the demo server.";
   }
-  if (open) {
-    try { sessionStorage.setItem("demo-key", candidate); } catch (error) {}
-  }
+  if (demoKey !== candidate) return false;
+  if (open) $("key").value = "";
   $("lock").hidden = open;
   return open;
 }
@@ -731,9 +751,8 @@ setPose("none");
 if (window.SpeechRecognition || window.webkitSpeechRecognition) {
   const urlKey = new URLSearchParams(location.search).get("key");
   if (urlKey !== null) window.history.replaceState(null, "", location.pathname);
-  let saved = urlKey || "";
-  try { saved = saved || sessionStorage.getItem("demo-key") || ""; } catch (error) {}
-  unlock(saved).then(open => {
+  try { sessionStorage.removeItem("demo-key"); } catch (error) {}
+  unlock(urlKey || "").then(open => {
     if (!open && urlKey && !$("lockMessage").textContent) $("lockMessage").textContent = "That key is not valid.";
   });
 } else {
@@ -747,7 +766,8 @@ function toggle() {
   if (opening || !$("lock").hidden) return;
   if (recording) return stop();
   opening = true;
-  start().catch(error => { opening = false; say(error.message); });
+  const id = session + 1;
+  start().catch(error => { if (id === session) { stop(); say(error.message); } });
 }
 $("momo").onclick = toggle;
 $("caption").onclick = () => { if (!recording) toggle(); };
