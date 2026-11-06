@@ -137,7 +137,7 @@ const POSES = {
   agreeableness: { l: [162, 344], r: [238, 344], props: ["teacup"], brow: -3, smile: 22 },
   neuroticism: { l: [50, 300], r: [352, 236], props: ["umbrella"], brow: -14, smile: -8 }
 };
-const MIN_SECONDS = 5, MAX_SECONDS = 15, PAUSE_SECONDS = 0.6, FINAL_WAIT_MS = 450, VOICE_RATE = 24000, MIN_SPOKEN = 0.25, BARGE_LEVEL = 0.05, BARGE_SECONDS = 0.35, PRE_ROLL = 0.3, SCALE = 0.2, FRAME = 1000 / 30;
+const MIN_SECONDS = 5, MAX_SECONDS = 15, PAUSE_SECONDS = 0.4, FINAL_WAIT_MS = 250, VOICE_RATE = 24000, MIN_SPOKEN = 0.25, BARGE_LEVEL = 0.05, BARGE_SECONDS = 0.35, PRE_ROLL = 0.3, SCALE = 0.2, FRAME = 1000 / 30;
 const API = ["localhost", "127.0.0.1"].includes(location.hostname) ? "" : "https://15-235-100-243.sslip.io";
 let demoKey = "", conversation = "", expiresAt = 0, expiryTimer;
 const api = (path, options = {}) => fetch(API + path, { ...options, headers: { ...options.headers, "X-Demo-Key": demoKey } });
@@ -181,7 +181,7 @@ function setRadar(values, leader) {
 }
 
 let recording = false, context, stream, source, processor, recognition, voiceNode, speechData;
-let voices = [], nextStart = 0, reply = null, loud = 0, leader = null, predicting = false, voiceLog = [], session = 0;
+let voices = [], nextStart = 0, reply = null, loud = 0, leader = null, voiceLog = [], session = 0;
 let chunks = [], total = 0, floor = 0.01, speaking = false, spoken = 0, silence = 0;
 let heard = "", interim = "", talking = false, settling = false, history = [];
 let state = "idle", pose = POSES.none, micLevel = 0, pointer = { x: 0, y: 0 };
@@ -441,8 +441,9 @@ async function runTurn(samples, rate, id) {
   interim = "";
   if (text) {
     const turn = { id, text, said: "", row: null };
-    learn(samples, rate, turn);
     try {
+      turn.prediction = await learn(samples, rate, text);
+      if (id !== session) return;
       await respond(turn);
     } catch (error) {
       if (id === session) say(`Sorry, that failed: ${error.message}.`);
@@ -451,39 +452,17 @@ async function runTurn(samples, rate, id) {
   if (id === session) listen();
 }
 
-function learn(samples, rate, turn) {
-  voiceLog.push({ samples, text: turn.text });
+async function learn(samples, rate, currentText) {
+  voiceLog.push({ samples, text: currentText });
   let seconds = voiceLog.reduce((sum, item) => sum + item.samples.length / rate, 0);
   while (voiceLog.length > 1 && seconds > MAX_SECONDS) {
     seconds -= voiceLog.shift().samples.length / rate;
   }
-  if (seconds >= MIN_SECONDS && !predicting) predict(rate, turn);
-}
-
-async function predict(rate, turn) {
-  predicting = true;
-  const items = voiceLog.slice();
-  const samples = new Float32Array(items.reduce((sum, item) => sum + item.samples.length, 0));
+  if (seconds < MIN_SECONDS) return null;
+  const window = new Float32Array(voiceLog.reduce((sum, item) => sum + item.samples.length, 0));
   let offset = 0;
-  for (const item of items) { samples.set(item.samples, offset); offset += item.samples.length; }
-  const text = items.map(item => item.text).join(" ");
-  try {
-    const response = await api("/predict", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ wav_base64: await wavBase64(samples, rate), transcript: text })
-    });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error);
-    if (turn.id === session) {
-      leader = show(result);
-      turn.row = addRow(result, turn.text, leader).querySelector("small");
-      if (turn.said) turn.row.textContent = "Momo: " + turn.said;
-    }
-  } catch (error) {
-    console.error("prediction failed", error);
-  }
-  if (turn.id === session) predicting = false;
+  for (const item of voiceLog) { window.set(item.samples, offset); offset += item.samples.length; }
+  return { wav_base64: await wavBase64(window, rate), transcript: voiceLog.map(item => item.text).join(" ") };
 }
 
 async function wavBase64(samples, rate) {
@@ -565,7 +544,7 @@ async function respond(turn) {
       method: "POST",
       signal: control.signal,
       headers: { "Content-Type": "application/json", "X-Conversation": conversation },
-      body: JSON.stringify({ transcript: text, trait: leader, history })
+      body: JSON.stringify({ transcript: text, trait: leader, history, prediction: turn.prediction })
     });
     if (response.status === 410 && turn.id === session) {
       stop();
@@ -586,6 +565,10 @@ async function respond(turn) {
         const item = JSON.parse(line);
         if (item.error) throw new Error(item.error);
         if (item.speech_error) say(`Voice failed: ${item.speech_error}. Momo said: ${said}`);
+        if (item.prediction) {
+          leader = show(item.prediction);
+          turn.row = addRow(item.prediction, text, leader).querySelector("small");
+        }
         if (item.text) {
           said = (said + " " + item.text.replace(/\[[^\]]*\]\s*/g, "")).trim();
           say(said);
@@ -700,7 +683,6 @@ function stop() {
   conversation = "";
   heard = interim = "";
   session++;
-  predicting = false;
   settling = false;
   $("rows").replaceChildren();
   recording = false;
