@@ -137,7 +137,7 @@ const POSES = {
   agreeableness: { l: [162, 344], r: [238, 344], props: ["teacup"], brow: -3, smile: 22 },
   neuroticism: { l: [50, 300], r: [352, 236], props: ["umbrella"], brow: -14, smile: -8 }
 };
-const MIN_SECONDS = 5, MAX_SECONDS = 15, PAUSE_SECONDS = 0.4, FINAL_WAIT_MS = 250, VOICE_RATE = 24000, MIN_SPOKEN = 0.25, BARGE_LEVEL = 0.05, BARGE_SECONDS = 0.35, PRE_ROLL = 0.3, SCALE = 0.2, FRAME = 1000 / 30;
+const MIN_SECONDS = 5, MAX_SECONDS = 15, PAUSE_SECONDS = 0.4, FINAL_WAIT_MS = 750, VOICE_RATE = 24000, MIN_SPOKEN = 0.25, BARGE_LEVEL = 0.05, BARGE_SECONDS = 0.35, PRE_ROLL = 0.3, SCALE = 0.2, FRAME = 1000 / 30;
 const API = ["localhost", "127.0.0.1"].includes(location.hostname) ? "" : "https://15-235-100-243.sslip.io";
 let demoKey = "", conversation = "", expiresAt = 0, expiryTimer;
 const api = (path, options = {}) => fetch(API + path, { ...options, headers: { ...options.headers, "X-Demo-Key": demoKey } });
@@ -343,12 +343,16 @@ const say = text => { $("caption").textContent = text; };
 function startSpeech(id) {
   const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!Speech) { say("Speech recognition needs Chrome."); return; }
-  recognition = new Speech();
+  const previous = recognition;
+  recognition = null;
+  previous?.abort();
+  const speech = new Speech();
+  recognition = speech;
   recognition.continuous = true;
   recognition.interimResults = true;
   recognition.lang = "en-US";
   recognition.onresult = event => {
-    if (id !== session) return;
+    if (id !== session || recognition !== speech || (!speaking && !settling)) return;
     let live = "";
     for (let i = event.resultIndex; i < event.results.length; i++) {
       if (talking && !settling) continue;
@@ -360,11 +364,11 @@ function startSpeech(id) {
     if (!talking && state === "listening" && (heard || interim)) say((heard + " " + interim).trim().split(/\s+/).slice(-14).join(" "));
   };
   recognition.onerror = event => {
-    if (id !== session) return;
+    if (id !== session || recognition !== speech) return;
     if (event.error === "network" || event.error === "service-not-allowed") say("Speech recognition failed here. Please use Google Chrome.");
     else if (event.error !== "no-speech" && event.error !== "aborted") say(`Speech recognition stopped (${event.error}).`);
   };
-  recognition.onend = () => { if (id === session && recording) try { recognition.start(); } catch (error) {} };
+  recognition.onend = () => { if (id === session && recognition === speech && recording && !talking) startSpeech(id); };
   recognition.start();
 }
 
@@ -407,7 +411,7 @@ function onAudio(event) {
   if (total / context.sampleRate >= MAX_SECONDS) return finishSegment();
   if (silence >= PAUSE_SECONDS) {
     if (spoken >= MIN_SPOKEN) return finishSegment();
-    resetSegment();
+    listen();
   }
 }
 
@@ -427,6 +431,7 @@ function finishSegment() {
   talking = true;
   settling = true;
   state = "thinking";
+  recognition?.stop();
   runTurn(samples, context.sampleRate, session);
 }
 
@@ -435,14 +440,17 @@ async function runTurn(samples, rate, id) {
     await new Promise(resolve => setTimeout(resolve, 25));
   }
   if (id !== session) return;
-  const text = (heard + " " + interim).trim();
+  const text = interim ? "" : heard.trim();
+  const finishedSpeech = recognition;
+  recognition = null;
+  finishedSpeech?.abort();
   settling = false;
   heard = "";
   interim = "";
   if (text) {
     const turn = { id, text, said: "", row: null };
     try {
-      turn.prediction = await learn(samples, rate, text);
+      [turn.audio, turn.prediction] = await Promise.all([wavBase64(samples, rate), learn(samples, rate, text)]);
       if (id !== session) return;
       await respond(turn);
     } catch (error) {
@@ -520,7 +528,9 @@ const listen = () => {
   heard = "";
   interim = "";
   talking = false;
-  if (recording) state = "listening";
+  if (!recording) return;
+  state = "listening";
+  startSpeech(session);
 };
 
 function show(result) {
@@ -544,7 +554,7 @@ async function respond(turn) {
       method: "POST",
       signal: control.signal,
       headers: { "Content-Type": "application/json", "X-Conversation": conversation },
-      body: JSON.stringify({ transcript: text, trait: leader, history, prediction: turn.prediction })
+      body: JSON.stringify({ transcript: text, audio_base64: turn.audio, trait: leader, history, prediction: turn.prediction })
     });
     if (response.status === 410 && turn.id === session) {
       stop();
@@ -578,6 +588,7 @@ async function respond(turn) {
     }
     await last;
   } catch (error) {
+    if (turn.id === session) interrupt();
     if (error.name !== "AbortError") throw error;
   } finally {
     if (reply === control) reply = null;
@@ -660,19 +671,8 @@ async function start() {
   if (expireConversation()) return;
   expiryTimer = setTimeout(expireConversation, expiresAt - Date.now());
   document.body.classList.remove("idle");
-  talking = true;
-  startSpeech(id);
   $("momo").setAttribute("aria-label", "Momo. Tap to stop");
-  try {
-    const response = await api("/greeting", { cache: "no-store" });
-    if (response.ok && id === session) {
-      const greeting = response.headers.get("X-Greeting");
-      say(greeting);
-      history = [{ role: "assistant", content: greeting }];
-      const buffer = await context.decodeAudioData(await response.arrayBuffer());
-      if (id === session) await schedule(buffer);
-    }
-  } catch (error) {}
+  say("I'm listening.");
   if (id === session) listen();
 }
 
