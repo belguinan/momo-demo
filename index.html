@@ -535,8 +535,7 @@ const listen = () => {
 
 function show(result) {
   const distance = Object.fromEntries(TRAITS.map(t => [t, result.scores[t] - result.band_centers[t]]));
-  const strongest = TRAITS.reduce((a, b) => distance[b] > distance[a] ? b : a);
-  const leader = result.bands[strongest] === "above_average" ? strongest : null;
+  const leader = TRAITS.reduce((a, b) => result.scores[b] > result.scores[a] ? b : a);
   setRadar(Object.fromEntries(TRAITS.map(t => [t, 50 + Math.max(-1, Math.min(1, distance[t] / SCALE)) * 50])), leader);
   document.documentElement.style.setProperty("--tint", TINTS[leader] || "#f5f5f7");
   setPose(leader || "none");
