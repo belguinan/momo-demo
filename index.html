@@ -62,7 +62,11 @@
   th, td { padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--line); }
   th:first-child, td:first-child { text-align: left; min-width: 240px; }
   td small { display: block; font-size: 14px; color: var(--ink-soft); }
-  #modelChoice { font: inherit; border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; background: white; color: var(--ink); }
+  [hidden] { display: none !important; }
+  .version-controls { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 6px 14px; }
+  #notebooks { display: grid; gap: 5px; padding: 6px 0 0 22px; margin: 0; }
+  #notebooks a { color: var(--ink); text-underline-offset: 3px; }
+  #versionChoice, #modelChoice { font: inherit; border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; background: white; color: var(--ink); }
   #lock { position: fixed; inset: 0; z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 16px; background: var(--tint); text-align: center; }
   #lock[hidden] { display: none; }
   #lock h1 { margin: 0; font: 600 clamp(32px, 5vw, 44px)/1.1 var(--font); letter-spacing: -.03em; }
@@ -80,7 +84,7 @@
   <p id="lockMessage" role="alert"></p>
   <small>We don't store any of your data.</small>
 </form>
-<main>
+<main id="demo" hidden>
   <svg id="momo" viewBox="-40 -40 480 490" role="button" tabindex="0" aria-label="Momo. Tap to start talking">
     <g id="waves" fill="none" stroke="#2a1f17" stroke-width="6" stroke-linecap="round">
       <path d="M-6 110Q-22 150 -6 190M-26 92Q-48 150 -26 208"/>
@@ -114,17 +118,23 @@
   </svg>
 
   <p id="caption" aria-live="polite">Tap Momo to talk</p>
-  <label for="modelChoice">Reply model <select id="modelChoice"><option value="mlp">MLP</option><option value="cnn">CNN</option></select></label>
+  <div class="version-controls">
+    <label for="versionChoice">Playing <select id="versionChoice"></select></label>
+    <label for="modelChoice">Reply model <select id="modelChoice"><option value="mlp">MLP</option><option value="cnn">CNN</option></select></label>
+  </div>
   <svg id="radar" viewBox="-245 -158 490 290" role="img" aria-label="Personality profile"></svg>
   <p id="turnCue" aria-live="polite" hidden></p>
-  <a id="versionLink" href="?version=3">Try Momo v3 · Emotion</a>
   <small id="emotionCredit" hidden>Experimental · May misread everyday speech · Trained on <a href="https://github.com/CheyneyComputerScience/CREMA-D">CREMA-D (Cao et al., ODbL / DbCL)</a></small>
   <details>
-    <summary>Compare scores and view history</summary>
+    <summary id="historyTitle">Compare scores and view history</summary>
     <div class="scroll"><table>
       <thead><tr><th>Said</th><th>Model</th><th>O</th><th>C</th><th>E</th><th>A</th><th>N</th><th>Reply style</th></tr></thead>
       <tbody id="rows"></tbody>
     </table></div>
+  </details>
+  <details>
+    <summary>How Momo was built</summary>
+    <ol id="notebooks"></ol>
   </details>
 </main>
 
@@ -147,24 +157,59 @@ const API = ["localhost", "127.0.0.1"].includes(location.hostname) ? "" : "https
 let demoKey = "", conversation = "", expiresAt = 0, expiryTimer;
 const api = (path, options = {}) => fetch(API + path, { ...options, headers: { ...options.headers, "X-Demo-Key": demoKey } });
 const $ = id => document.getElementById(id);
-const emotionMode = new URLSearchParams(location.search).get("version") === "3";
-if (emotionMode) {
-  document.title = "Momo v3 · Emotion";
-  $("modelChoice").parentElement.hidden = true;
-  $("radar").style.display = "none";
-  $("versionLink").href = location.pathname;
-  $("versionLink").textContent = "Switch to the personality demo";
-  $("emotionCredit").hidden = false;
-  $("turnCue").hidden = false;
-  $("turnCue").textContent = "Momo v3 · Listening for emotion in each turn";
-  document.querySelector("summary").textContent = "View turn history";
-  const head = document.querySelector("thead tr");
-  head.replaceChildren();
-  for (const title of ["Said", "Perceived delivery", "Model", "Reply starts"]) {
-    const cell = document.createElement("th");
-    cell.textContent = title;
-    head.appendChild(cell);
+let emotionMode = false;
+const speechSupported = Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
+
+function configureVersion() {
+  const version = $("versionChoice").value;
+  emotionMode = version === "3";
+  document.title = $("versionChoice").selectedOptions[0].textContent;
+  $("modelChoice").parentElement.hidden = version !== "2";
+  $("radar").toggleAttribute("hidden", emotionMode);
+  $("emotionCredit").hidden = !emotionMode;
+  $("turnCue").hidden = !emotionMode;
+  $("turnCue").textContent = emotionMode ? "Perceived emotion appears after you speak" : "";
+  $("historyTitle").textContent = version === "2" ? "Compare scores and view history" : "View turn history";
+  const columns = emotionMode ? ["Said", "Perceived delivery", "Model", "Reply starts"]
+    : ["Said", "Model", "O", "C", "E", "A", "N", "Reply style"];
+  document.querySelector("thead tr").replaceChildren(...columns.map(label => {
+    const heading = document.createElement("th");
+    heading.textContent = label;
+    return heading;
+  }));
+  if (!speechSupported) say("Open Momo in Google Chrome to talk.");
+}
+
+function displayVersions(versions) {
+  $("versionChoice").replaceChildren();
+  $("notebooks").replaceChildren();
+  for (const version of versions) {
+    $("versionChoice").add(new Option(version.name, version.id));
+    const link = document.createElement("a");
+    link.textContent = version.name;
+    link.href = version.notebook;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    $("notebooks").appendChild(document.createElement("li")).appendChild(link);
   }
+  const requested = new URLSearchParams(location.search).get("version");
+  $("versionChoice").value = versions.some(v => v.id === requested) ? requested : "2";
+  configureVersion();
+}
+
+$("versionChoice").onchange = () => {
+  const resume = recording || opening;
+  stop();
+  configureVersion();
+  const url = new URL(location.href);
+  url.searchParams.set("version", $("versionChoice").value);
+  window.history.replaceState(null, "", url);
+  if (resume) toggle();
+};
+
+function activeModel() {
+  if (emotionMode) return "emotion";
+  return $("versionChoice").value === "1" ? "original" : $("modelChoice").value;
 }
 let lastVoicedAt = 0;
 
@@ -587,7 +632,7 @@ async function respond(turn) {
   if (expireConversation()) return;
   const text = turn.text;
   const control = new AbortController();
-  const model = emotionMode ? "emotion" : $("modelChoice").value;
+  const model = activeModel();
   $("modelChoice").disabled = true;
   reply = control;
   let said = "", last = Promise.resolve();
@@ -708,6 +753,9 @@ function closeConversation(token) {
 window.addEventListener("pagehide", () => {
   stop();
   demoKey = "";
+  $("demo").hidden = true;
+  $("notebooks").replaceChildren();
+  $("versionChoice").replaceChildren();
   $("key").value = "";
   $("lock").hidden = false;
 });
@@ -785,15 +833,25 @@ function stop() {
 
 async function unlock(candidate) {
   demoKey = candidate;
-  let open = false;
+  let versions;
   try {
-    open = (await api("/check")).ok;
+    const response = await api("/versions");
+    if (response.ok) versions = (await response.json()).versions;
   } catch (error) {
     $("lockMessage").textContent = "Could not reach the demo server.";
   }
   if (demoKey !== candidate) return false;
-  if (open) $("key").value = "";
+  const open = Boolean(versions?.length);
+  $("demo").hidden = !open;
   $("lock").hidden = open;
+  if (open) {
+    displayVersions(versions);
+    $("key").value = "";
+  } else {
+    demoKey = "";
+    $("notebooks").replaceChildren();
+    $("versionChoice").replaceChildren();
+  }
   return open;
 }
 
@@ -804,26 +862,19 @@ $("lock").onsubmit = async event => {
 };
 
 setPose("none");
-if (window.SpeechRecognition || window.webkitSpeechRecognition) {
-  const urlKey = new URLSearchParams(location.search).get("key");
-  if (urlKey !== null) {
-    const url = new URL(location.href);
-    url.searchParams.delete("key");
-    window.history.replaceState(null, "", url.pathname + url.search + url.hash);
-  }
-  try { sessionStorage.removeItem("demo-key"); } catch (error) {}
-  unlock(urlKey || "").then(open => {
-    if (!open && urlKey && !$("lockMessage").textContent) $("lockMessage").textContent = "That key is not valid.";
-  });
-} else {
-  $("key").hidden = true;
-  $("lock").querySelector("button").hidden = true;
-  $("lockMessage").textContent = "This demo needs speech recognition. Please open it in Google Chrome.";
-  $("lock").hidden = false;
+const urlKey = new URLSearchParams(location.search).get("key");
+if (urlKey !== null) {
+  const url = new URL(location.href);
+  url.searchParams.delete("key");
+  window.history.replaceState(null, "", url.pathname + url.search + url.hash);
 }
+try { sessionStorage.removeItem("demo-key"); } catch (error) {}
+if (urlKey) unlock(urlKey).then(open => {
+  if (!open && !$("lockMessage").textContent) $("lockMessage").textContent = "That key is not valid.";
+});
 let opening = false;
 function toggle() {
-  if (opening || !$("lock").hidden) return;
+  if (opening || !$("lock").hidden || !speechSupported) return;
   if (recording) return stop();
   opening = true;
   const id = session + 1;
