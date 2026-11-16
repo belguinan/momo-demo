@@ -60,10 +60,30 @@
   th:first-child, td:first-child { text-align: left; min-width: 240px; }
   td small { display: block; font-size: 14px; color: var(--ink-soft); }
   [hidden] { display: none !important; }
-  .version-controls { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 6px 14px; }
-  #notebooks { display: grid; gap: 5px; padding: 6px 0 0 22px; margin: 0; }
-  #notebooks a { color: var(--ink); text-underline-offset: 3px; }
-  #versionChoice, #modelChoice { font: inherit; border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; background: white; color: var(--ink); }
+  #versions { width: min(940px, 100%); margin: 10px 0 6px; text-align: center; }
+  #versions h2 { margin: 0; font: 600 21px/1.25 var(--font); letter-spacing: -.02em; }
+  #versions > p { margin: 2px 0 14px; color: var(--ink-soft); font-size: 15px; }
+  #versionCards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; text-align: left; }
+  .card { display: flex; flex-direction: column; gap: 6px; padding: 16px; border: 1.5px solid transparent; border-radius: 18px; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .05), 0 8px 24px -16px rgba(0, 0, 0, .25); transition: border-color .25s, box-shadow .25s; }
+  .card.on { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(0, 113, 227, .12), 0 8px 24px -16px rgba(0, 0, 0, .25); }
+  .card .tag { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-soft); }
+  .card.on .tag { color: var(--accent); }
+  .card h3 { margin: 0; font: 600 18px/1.25 var(--font); letter-spacing: -.015em; }
+  .card p { margin: 0; color: var(--ink-soft); font-size: 14px; line-height: 1.4; }
+  .card .result { color: var(--ink); font-weight: 500; font-variant-numeric: tabular-nums; }
+  .card .actions { display: flex; gap: 8px; margin-top: auto; padding-top: 8px; }
+  .card .actions > * { flex: 1; padding: 9px 12px; border-radius: 999px; font: 500 14px var(--font); text-align: center; text-decoration: none; white-space: nowrap; }
+  .card .pick { background: #e8e8ed; color: var(--ink); }
+  .card .pick:hover { background: #dcdce1; }
+  .card.on .pick { background: var(--accent); color: #fff; cursor: default; }
+  .card .open { border: 1px solid rgba(0, 113, 227, .35); color: var(--accent); }
+  .card .open:hover { background: rgba(0, 113, 227, .06); }
+  .card .open:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  #modelSwitch { display: inline-flex; align-items: center; gap: 10px; margin-top: 14px; color: var(--ink-soft); font-size: 14px; }
+  #modelSwitch .seg { display: inline-flex; padding: 3px; border-radius: 999px; background: #e8e8ed; }
+  #modelSwitch button { padding: 6px 18px; background: transparent; color: var(--ink); font-size: 14px; }
+  #modelSwitch button[aria-pressed="true"] { background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .15); }
+  #modelSwitch button:disabled { opacity: .5; cursor: wait; }
   #lock { position: fixed; inset: 0; z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 16px; background: var(--tint); text-align: center; }
   #lock[hidden] { display: none; }
   #lock h1 { margin: 0; font: 600 clamp(32px, 5vw, 44px)/1.1 var(--font); letter-spacing: -.03em; }
@@ -115,10 +135,16 @@
   </svg>
 
   <p id="caption" aria-live="polite">Tap Momo to talk</p>
-  <div class="version-controls">
-    <label for="versionChoice">Playing <select id="versionChoice"></select></label>
-    <label for="modelChoice">Reply model <select id="modelChoice"><option value="mlp">MLP</option><option value="cnn">CNN</option></select></label>
-  </div>
+  <section id="versions" aria-labelledby="versionsTitle">
+    <h2 id="versionsTitle">Choose a version to test</h2>
+    <p>Each version has its own Colab notebook with the full training and results.</p>
+    <div id="versionCards"></div>
+    <div id="modelSwitch" hidden>Momo replies with
+      <span class="seg" role="group" aria-label="Reply model"><button type="button" data-model="mlp">MLP</button><button type="button" data-model="cnn">CNN</button></span>
+    </div>
+    <select id="versionChoice" hidden></select>
+    <select id="modelChoice" hidden><option value="mlp">MLP</option><option value="cnn">CNN</option></select>
+  </section>
   <svg id="radar" viewBox="-245 -158 490 290" role="img" aria-label="Personality profile"></svg>
   <p id="turnCue" aria-live="polite" hidden></p>
   <small id="emotionCredit" hidden>Experimental · May misread everyday speech · Trained on <a href="https://github.com/CheyneyComputerScience/CREMA-D">CREMA-D (Cao et al., ODbL / DbCL)</a></small>
@@ -128,10 +154,6 @@
       <thead><tr><th>Said</th><th>Model</th><th>O</th><th>C</th><th>E</th><th>A</th><th>N</th><th>Reply style</th></tr></thead>
       <tbody id="rows"></tbody>
     </table></div>
-  </details>
-  <details>
-    <summary>How Momo was built</summary>
-    <ol id="notebooks"></ol>
   </details>
 </main>
 
@@ -161,7 +183,14 @@ function configureVersion() {
   const version = $("versionChoice").value;
   emotionMode = version === "3";
   document.title = $("versionChoice").selectedOptions[0].textContent;
-  $("modelChoice").parentElement.hidden = version !== "2";
+  $("modelSwitch").hidden = version !== "2";
+  for (const card of $("versionCards").children) {
+    const on = card.dataset.version === version;
+    card.classList.toggle("on", on);
+    card.querySelector(".pick").textContent = on ? "Testing now" : "Try this one";
+    card.querySelector(".pick").setAttribute("aria-pressed", on);
+  }
+  syncModel();
   $("radar").toggleAttribute("hidden", emotionMode);
   $("emotionCredit").hidden = !emotionMode;
   $("turnCue").hidden = !emotionMode;
@@ -177,17 +206,34 @@ function configureVersion() {
   if (!speechSupported) say("Open Momo in Google Chrome to talk.");
 }
 
+const VERSION_INFO = {
+  "1": { title: "Original Momo", what: "Personality from voice and words: a text MLP and an audio MLP, fused.", result: "Test score 89.95% (1 − MAE)" },
+  "2": { title: "MLP vs CNN", what: "The retrained personality MLP next to a CNN. Switch the model while you talk.", result: "Test: MLP 90.20% · CNN 89.93%" },
+  "3": { title: "Turn emotion", what: "Emotion heard in each speaking turn, trained on CREMA-D. Experimental.", result: "Live CNN: test macro-F1 46.1%" }
+};
+
 function displayVersions(versions) {
   $("versionChoice").replaceChildren();
-  $("notebooks").replaceChildren();
+  $("versionCards").replaceChildren();
   for (const version of versions) {
     $("versionChoice").add(new Option(version.name, version.id));
-    const link = document.createElement("a");
-    link.textContent = version.name;
-    link.href = version.notebook;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    $("notebooks").appendChild(document.createElement("li")).appendChild(link);
+    const info = VERSION_INFO[version.id] || { title: version.name, what: "", result: "" };
+    const card = document.createElement("article");
+    card.className = "card";
+    card.dataset.version = version.id;
+    card.innerHTML = `<span class="tag">Version ${version.id}</span><h3></h3><p></p><p class="result"></p>`
+      + `<div class="actions"><button type="button" class="pick"></button><a class="open" target="_blank" rel="noopener noreferrer">Notebook ↗</a></div>`;
+    card.querySelector("h3").textContent = info.title;
+    card.querySelector("p").textContent = info.what;
+    card.querySelector(".result").textContent = info.result;
+    card.querySelector(".open").href = version.notebook;
+    card.querySelector(".open").setAttribute("aria-label", `Open the Colab notebook for version ${version.id}, ${info.title}`);
+    card.querySelector(".pick").onclick = () => {
+      if ($("versionChoice").value === version.id) return;
+      $("versionChoice").value = version.id;
+      $("versionChoice").onchange();
+    };
+    $("versionCards").appendChild(card);
   }
   const requested = new URLSearchParams(location.search).get("version");
   $("versionChoice").value = versions.some(v => v.id === requested) ? requested : "2";
@@ -617,7 +663,28 @@ function show(result) {
 
 let priorStyles = { mlp: null, cnn: null };
 let latestProfiles = null;
+function syncModel() {
+  for (const button of $("modelSwitch").querySelectorAll("button")) {
+    button.setAttribute("aria-pressed", button.dataset.model === $("modelChoice").value);
+    button.disabled = $("modelChoice").disabled;
+  }
+}
+
+function lockModel(locked) {
+  $("modelChoice").disabled = locked;
+  syncModel();
+}
+
+for (const button of $("modelSwitch").querySelectorAll("button")) {
+  button.onclick = () => {
+    if ($("modelChoice").disabled || $("modelChoice").value === button.dataset.model) return;
+    $("modelChoice").value = button.dataset.model;
+    $("modelChoice").onchange();
+  };
+}
+
 $("modelChoice").onchange = () => {
+  syncModel();
   const model = $("modelChoice").value;
   leader = priorStyles[model];
   if (latestProfiles?.comparison?.[model]) {
@@ -630,7 +697,7 @@ async function respond(turn) {
   const text = turn.text;
   const control = new AbortController();
   const model = activeModel();
-  $("modelChoice").disabled = true;
+  lockModel(true);
   reply = control;
   let said = "", last = Promise.resolve();
   try {
@@ -692,7 +759,7 @@ async function respond(turn) {
     if (turn.id === session) interrupt();
     if (error.name !== "AbortError") throw error;
   } finally {
-    if (reply === control) { reply = null; $("modelChoice").disabled = false; }
+    if (reply === control) { reply = null; lockModel(false); }
     if (said && turn.id === session) {
       turn.said = said;
       if (turn.row) turn.row.textContent = "Momo: " + said;
@@ -751,7 +818,7 @@ window.addEventListener("pagehide", () => {
   stop();
   demoKey = "";
   $("demo").hidden = true;
-  $("notebooks").replaceChildren();
+  $("versionCards").replaceChildren();
   $("versionChoice").replaceChildren();
   $("key").value = "";
   $("lock").hidden = false;
@@ -803,7 +870,7 @@ function stop() {
   priorStyles = { mlp: null, cnn: null };
   latestProfiles = null;
   if (emotionMode) $("turnCue").textContent = "Momo v3 · Listening for emotion in each turn";
-  $("modelChoice").disabled = false;
+  lockModel(false);
   recording = false;
   talking = false;
   interrupt();
@@ -846,7 +913,7 @@ async function unlock(candidate) {
     $("key").value = "";
   } else {
     demoKey = "";
-    $("notebooks").replaceChildren();
+    $("versionCards").replaceChildren();
     $("versionChoice").replaceChildren();
   }
   return open;
