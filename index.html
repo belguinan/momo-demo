@@ -116,6 +116,9 @@
   <p id="caption" aria-live="polite">Tap Momo to talk</p>
   <label for="modelChoice">Reply model <select id="modelChoice"><option value="mlp">MLP</option><option value="cnn">CNN</option></select></label>
   <svg id="radar" viewBox="-245 -158 490 290" role="img" aria-label="Personality profile"></svg>
+  <p id="turnCue" aria-live="polite" hidden></p>
+  <a id="versionLink" href="?version=3">Try Momo v3 · Emotion</a>
+  <small id="emotionCredit" hidden>Experimental · May misread everyday speech · Trained on <a href="https://github.com/CheyneyComputerScience/CREMA-D">CREMA-D (Cao et al., ODbL / DbCL)</a></small>
   <details>
     <summary>Compare scores and view history</summary>
     <div class="scroll"><table>
@@ -144,6 +147,26 @@ const API = ["localhost", "127.0.0.1"].includes(location.hostname) ? "" : "https
 let demoKey = "", conversation = "", expiresAt = 0, expiryTimer;
 const api = (path, options = {}) => fetch(API + path, { ...options, headers: { ...options.headers, "X-Demo-Key": demoKey } });
 const $ = id => document.getElementById(id);
+const emotionMode = new URLSearchParams(location.search).get("version") === "3";
+if (emotionMode) {
+  document.title = "Momo v3 · Emotion";
+  $("modelChoice").parentElement.hidden = true;
+  $("radar").style.display = "none";
+  $("versionLink").href = location.pathname;
+  $("versionLink").textContent = "Switch to the personality demo";
+  $("emotionCredit").hidden = false;
+  $("turnCue").hidden = false;
+  $("turnCue").textContent = "Momo v3 · Listening for emotion in each turn";
+  document.querySelector("summary").textContent = "View turn history";
+  const head = document.querySelector("thead tr");
+  head.replaceChildren();
+  for (const title of ["Said", "Perceived delivery", "Model", "Reply starts"]) {
+    const cell = document.createElement("th");
+    cell.textContent = title;
+    head.appendChild(cell);
+  }
+}
+let lastVoicedAt = 0;
 
 const corner = (i, value) => {
   const angle = (i * 72 - 90) * Math.PI / 180;
@@ -408,7 +431,7 @@ function onAudio(event) {
     return;
   }
   speaking = true;
-  if (voiced) { spoken += seconds; silence = 0; } else { silence += seconds; }
+  if (voiced) { lastVoicedAt = performance.now(); spoken += seconds; silence = 0; } else { silence += seconds; }
 
   if (total / context.sampleRate >= MAX_SECONDS) return finishSegment();
   if (silence >= PAUSE_SECONDS) {
@@ -450,9 +473,9 @@ async function runTurn(samples, rate, id) {
   heard = "";
   interim = "";
   if (text) {
-    const turn = { id, text, said: "", row: null };
+    const turn = { id, text, said: "", row: null, endedAt: lastVoicedAt };
     try {
-      [turn.audio, turn.prediction] = await Promise.all([wavBase64(samples, rate), learn(samples, rate, text)]);
+      [turn.audio, turn.prediction] = await Promise.all([wavBase64(samples, rate), emotionMode ? null : learn(samples, rate, text)]);
       if (id !== session) return;
       await respond(turn);
     } catch (error) {
@@ -507,7 +530,7 @@ function pcmBuffer(encoded) {
   return buffer;
 }
 
-function schedule(buffer) {
+function schedule(buffer, firstTurn) {
   const node = context.createBufferSource();
   node.buffer = buffer;
   node.connect(voiceNode);
@@ -521,6 +544,12 @@ function schedule(buffer) {
       resolve();
     };
   });
+  if (firstTurn?.latencyCell) {
+    const outputDelay = context.outputLatency || 0;
+    const delay = performance.now() - firstTurn.endedAt + 1000 * (at - context.currentTime + outputDelay);
+    firstTurn.latencyCell.textContent = (delay / 1000).toFixed(2) + " s";
+    firstTurn.latencyCell = null;
+  }
   node.start(at);
   return ended;
 }
@@ -558,7 +587,7 @@ async function respond(turn) {
   if (expireConversation()) return;
   const text = turn.text;
   const control = new AbortController();
-  const model = $("modelChoice").value;
+  const model = emotionMode ? "emotion" : $("modelChoice").value;
   $("modelChoice").disabled = true;
   reply = control;
   let said = "", last = Promise.resolve();
@@ -588,6 +617,19 @@ async function respond(turn) {
         const item = JSON.parse(line);
         if (item.error) throw new Error(item.error);
         if (item.speech_error) say(`Voice failed: ${item.speech_error}. Momo said: ${said}`);
+        if (item.emotion) {
+          const cue = item.emotion;
+          const description = cue.applied ? cue.label : "Uncertain · neutral reply";
+          $("turnCue").textContent = description;
+          const row = $("rows").insertRow(0);
+          const words = row.insertCell();
+          words.textContent = text;
+          turn.row = words.appendChild(document.createElement("small"));
+          row.insertCell().textContent = description;
+          row.insertCell().textContent = cue.model;
+          turn.latencyCell = row.insertCell();
+          turn.latencyCell.textContent = "Waiting for audio";
+        }
         if (item.prediction) {
           latestProfiles = item.prediction;
           for (const [name, profile] of Object.entries(item.prediction.comparison || {})) {
@@ -600,7 +642,7 @@ async function respond(turn) {
           said = (said + " " + item.text.replace(/\[[^\]]*\]\s*/g, "")).trim();
           say(said);
         }
-        if (item.pcm) last = schedule(pcmBuffer(item.pcm));
+        if (item.pcm) last = schedule(pcmBuffer(item.pcm), turn);
       }
     }
     await last;
@@ -715,6 +757,7 @@ function stop() {
   $("rows").replaceChildren();
   priorStyles = { mlp: null, cnn: null };
   latestProfiles = null;
+  if (emotionMode) $("turnCue").textContent = "Momo v3 · Listening for emotion in each turn";
   $("modelChoice").disabled = false;
   recording = false;
   talking = false;
@@ -763,7 +806,11 @@ $("lock").onsubmit = async event => {
 setPose("none");
 if (window.SpeechRecognition || window.webkitSpeechRecognition) {
   const urlKey = new URLSearchParams(location.search).get("key");
-  if (urlKey !== null) window.history.replaceState(null, "", location.pathname);
+  if (urlKey !== null) {
+    const url = new URL(location.href);
+    url.searchParams.delete("key");
+    window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+  }
   try { sessionStorage.removeItem("demo-key"); } catch (error) {}
   unlock(urlKey || "").then(open => {
     if (!open && urlKey && !$("lockMessage").textContent) $("lockMessage").textContent = "That key is not valid.";
