@@ -23,22 +23,15 @@
   ::selection { background: var(--accent); color: #fff; }
   html, body { height: 100%; }
   body { margin: 0; background: var(--tint); color: var(--ink); font: 400 16px/1.5 var(--font); -webkit-font-smoothing: antialiased; transition: background 1.2s cubic-bezier(.16, 1, .3, 1); }
-  main { min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 16px 16px 20px; }
-  svg#momo { width: min(340px, 75vw); height: min(41dvh, 390px); overflow: visible; cursor: pointer; border-radius: 40px; -webkit-tap-highlight-color: transparent; }
   svg#momo:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
   .prop { opacity: 0; transition: opacity .25s; }
   .prop.on { opacity: 1; }
-  #caption { margin: 0; min-height: 2.6em; max-width: 34ch; text-align: center; font: 500 clamp(19px, 2.4vw, 24px)/1.3 var(--font); letter-spacing: -.015em; text-wrap: balance; }
-  body.idle svg#momo { filter: drop-shadow(0 0 60px rgba(255, 236, 190, .35)); }
-  body.idle #caption { display: inline-flex; align-items: center; gap: 12px; min-height: 0; margin: 4px 0 16px; padding: 7px 22px 7px 7px; border-radius: 999px; background: #fff; font-size: 17px; font-weight: 500; letter-spacing: -.01em; cursor: pointer; box-shadow: 0 1px 2px rgba(0, 0, 0, .06), 0 10px 30px -14px rgba(0, 0, 0, .3); transition: transform .25s cubic-bezier(.16, 1, .3, 1), box-shadow .25s; }
-  body.idle #caption:hover { transform: translateY(-2px); box-shadow: 0 1px 2px rgba(0, 0, 0, .06), 0 16px 34px -14px rgba(0, 0, 0, .35); }
   body.idle #caption::before { content: ""; width: 34px; height: 34px; flex: none; border-radius: 50%; background: var(--accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round'%3E%3Crect x='9' y='3' width='6' height='11' rx='3'/%3E%3Cpath d='M5 11a7 7 0 0 0 14 0M12 18v3'/%3E%3C/svg%3E") center / 18px no-repeat; animation: ping 2s cubic-bezier(.16, 1, .3, 1) infinite; }
   @keyframes ping {
     0% { box-shadow: 0 0 0 0 rgba(0, 113, 227, .45); }
     70%, 100% { box-shadow: 0 0 0 12px rgba(0, 113, 227, 0); }
   }
   @media (prefers-reduced-motion: reduce) { body.idle #caption::before { animation: none; } }
-  #radar { width: min(500px, 100%); height: auto; overflow: visible; --lead: var(--ink-soft); }
   #radar .grid { fill: none; stroke: var(--line); stroke-width: 1; }
   #radar .avg { stroke: rgba(0, 0, 0, .22); stroke-dasharray: 3 4; }
   #shape { fill: var(--lead); fill-opacity: .14; stroke: var(--lead); stroke-width: 2; stroke-linejoin: round; transition: fill .8s, stroke .8s; }
@@ -51,39 +44,81 @@
   button { padding: 11px 24px; border: 0; border-radius: 999px; background: var(--accent); color: #fff; font: 500 16px var(--font); cursor: pointer; transition: transform .2s cubic-bezier(.16, 1, .3, 1), background .2s; }
   button:hover { background: #0077ed; }
   button:active { transform: scale(.97); }
-  button:focus-visible, summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
-  details { width: min(760px, 100%); font-size: 14px; }
-  summary { cursor: pointer; text-align: center; color: var(--ink-soft); font-weight: 500; }
-  .scroll { overflow-x: auto; margin-top: 8px; padding: 4px 12px; border-radius: 14px; background: rgba(255, 255, 255, .7); }
   table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-  th, td { padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--line); }
-  th:first-child, td:first-child { text-align: left; min-width: 240px; }
   td small { display: block; font-size: 14px; color: var(--ink-soft); }
   [hidden] { display: none !important; }
-  #versions { width: min(940px, 100%); margin: 10px 0 6px; text-align: center; }
-  #versions h2 { margin: 0; font: 600 21px/1.25 var(--font); letter-spacing: -.02em; }
-  #versions > p { margin: 2px 0 14px; color: var(--ink-soft); font-size: 15px; }
   #versionCards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; text-align: left; }
-  .card { display: flex; flex-direction: column; gap: 6px; padding: 16px; border: 1.5px solid transparent; border-radius: 18px; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .05), 0 8px 24px -16px rgba(0, 0, 0, .25); transition: border-color .25s, box-shadow .25s; }
-  .card.on { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(0, 113, 227, .12), 0 8px 24px -16px rgba(0, 0, 0, .25); }
-  .card .tag { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-soft); }
-  .card.on .tag { color: var(--accent); }
-  .card h3 { margin: 0; font: 600 18px/1.25 var(--font); letter-spacing: -.015em; }
-  .card p { margin: 0; color: var(--ink-soft); font-size: 14px; line-height: 1.4; }
-  .card .result { color: var(--ink); font-weight: 500; font-variant-numeric: tabular-nums; }
-  .card .actions { display: flex; gap: 8px; margin-top: auto; padding-top: 8px; }
-  .card .actions > * { flex: 1; padding: 9px 12px; border-radius: 999px; font: 500 14px var(--font); text-align: center; text-decoration: none; white-space: nowrap; }
+  main { max-width: 1240px; margin: 0 auto; padding: 28px 32px 40px; display: flex; flex-direction: column; gap: 24px; }
+  .top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
+  .brand { display: flex; align-items: center; gap: 14px; }
+  .word { font-size: 26px; font-weight: 700; letter-spacing: -.03em; }
+  .badge { padding: 4px 12px; border-radius: 999px; background: #e8e8ed; color: #424245; font-size: 13px; font-weight: 500; }
+  #notebookLinks { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  #notebookLinks > span { margin-right: 4px; color: var(--ink-soft); font-size: 14px; }
+  #notebookLinks a { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 16px; border: 1px solid #d2d2d7; border-radius: 999px; background: #fff; color: var(--ink); font-size: 14px; font-weight: 500; text-decoration: none; transition: border-color .2s; }
+  #notebookLinks a:hover { border-color: var(--accent); }
+  .credit { margin: -12px 0 0; color: var(--ink-soft); font-size: 14px; line-height: 1.6; }
+  .layout { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; }
+  .panel { border-radius: 28px; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 18px 40px -28px rgba(0, 0, 0, .25); }
+  .stage { flex: 999 1 600px; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 28px; }
+  .stage-top { align-self: stretch; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+  .testing { display: inline-flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; }
+  .testing::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+  svg#momo { width: min(280px, 70vw); height: min(330px, 40dvh); overflow: visible; cursor: pointer; border-radius: 40px; -webkit-tap-highlight-color: transparent; }
+  svg#momo:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
+  #caption { margin: 0; min-height: 2.6em; max-width: 34ch; text-align: center; font: 500 clamp(18px, 2.2vw, 22px)/1.3 var(--font); letter-spacing: -.015em; text-wrap: balance; }
+  body.idle #caption { display: inline-flex; align-items: center; gap: 12px; min-height: 52px; padding: 6px 24px 6px 6px; border-radius: 999px; background: var(--ink); color: #fff; font-size: 17px; font-weight: 600; cursor: pointer; transition: transform .25s cubic-bezier(.16, 1, .3, 1); }
+  body.idle #caption:hover { transform: translateY(-2px); }
+  .hint { margin: -4px 0 0; color: var(--ink-soft); font-size: 14px; text-align: center; }
+  body:not(.idle) .hint { visibility: hidden; }
+  .profile { align-self: stretch; display: flex; flex-direction: column; align-items: center; gap: 12px; margin-top: 6px; padding-top: 20px; border-top: 1px solid #e8e8ed; }
+  .profile h2 { align-self: flex-start; }
+  .profile h2, #versions h2, .history h2 { margin: 0; font: 600 20px/1.25 var(--font); letter-spacing: -.02em; }
+  #radar { width: 100%; max-width: 460px; height: auto; overflow: visible; --lead: var(--ink-soft); }
+  #turnCue { margin: 0; font-weight: 600; text-align: center; }
+  #emotionCredit { color: var(--ink-soft); font-size: 13px; text-align: center; }
+  #versions { flex: 1 1 380px; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+  #versions h2 { font-size: 22px; }
+  #versionCards { display: flex; flex-direction: column; gap: 14px; }
+  .card { display: flex; flex-direction: column; gap: 10px; padding: 20px; border: 1.5px solid #fff; border-radius: 22px; background: #fff; }
+  .card.on { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(0, 113, 227, .12); }
+  .card .head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  .card h3 { margin: 0; font: 600 17px/1.3 var(--font); }
+  .card h3 span { color: var(--ink-soft); font-weight: 500; }
+  .card.on h3 span { color: #0066cc; }
+  .card .score { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .card p { margin: 0; color: #515154; font-size: 14px; line-height: 1.45; }
+  .card .actions { display: flex; gap: 8px; }
+  .card .actions > * { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 0 12px; border-radius: 999px; font: 600 14px var(--font); text-decoration: none; white-space: nowrap; }
   .card .pick { background: #e8e8ed; color: var(--ink); }
   .card .pick:hover { background: #dcdce1; }
   .card.on .pick { background: var(--accent); color: #fff; cursor: default; }
-  .card .open { border: 1px solid rgba(0, 113, 227, .35); color: var(--accent); }
+  .card .open { border: 1px solid var(--accent); color: #0066cc; }
   .card .open:hover { background: rgba(0, 113, 227, .06); }
-  .card .open:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
-  #modelSwitch { display: inline-flex; align-items: center; gap: 10px; margin-top: 14px; color: var(--ink-soft); font-size: 14px; }
+  .card .open:focus-visible, #notebookLinks a:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  #modelSwitch { display: inline-flex; align-items: center; gap: 10px; color: var(--ink-soft); font-size: 14px; }
   #modelSwitch .seg { display: inline-flex; padding: 3px; border-radius: 999px; background: #e8e8ed; }
-  #modelSwitch button { padding: 6px 18px; background: transparent; color: var(--ink); font-size: 14px; }
-  #modelSwitch button[aria-pressed="true"] { background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .15); }
+  #modelSwitch button { min-height: 38px; padding: 0 18px; background: transparent; color: #424245; font-size: 14px; }
+  #modelSwitch button[aria-pressed="true"] { background: #fff; color: var(--ink); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, .15); }
   #modelSwitch button:disabled { opacity: .5; cursor: wait; }
+  .history { padding: 22px 28px; }
+  .history h2 { margin-bottom: 12px; font-size: 18px; }
+  .scroll { overflow-x: auto; }
+  table { font-size: 14px; }
+  th, td { padding: 8px; text-align: right; border-bottom: 1px solid #e8e8ed; }
+  th { color: var(--ink-soft); font-weight: 500; }
+  th:first-child, td:first-child { text-align: left; min-width: 240px; }
+  tfoot td, tfoot td:first-child { padding: 18px 8px; border: 0; color: var(--ink-soft); text-align: center; }
+  #rows:not(:empty) + tfoot { display: none; }
+  button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; color: var(--ink-soft); font-size: 13px; }
+  @media (max-width: 640px) {
+    main { padding: 20px 16px 32px; gap: 18px; }
+    .credit { margin-top: -8px; font-size: 13px; }
+    .stage { padding: 20px 16px; }
+    .history { padding: 16px; }
+    .card .actions > * { padding: 0 8px; }
+  }
   #lock { position: fixed; inset: 0; z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 16px; background: var(--tint); text-align: center; }
   #lock[hidden] { display: none; }
   #lock h1 { margin: 0; font: 600 clamp(32px, 5vw, 44px)/1.1 var(--font); letter-spacing: -.03em; }
@@ -102,7 +137,20 @@
   <small>We don't store any of your data.</small>
 </form>
 <main id="demo" hidden>
-  <svg id="momo" viewBox="-40 -40 480 490" role="button" tabindex="0" aria-label="Momo. Tap to start talking">
+  <header class="top">
+    <div class="brand"><span class="word">Momo</span><span class="badge">Master BDIA · Deep learning project</span></div>
+    <nav id="notebookLinks" aria-label="Notebooks"><span>Notebooks</span></nav>
+  </header>
+  <p class="credit">Réalisé par : Belguinan Noureddine<br>Encadré par : Pr. Youssef ES-SAADY &amp; Pr. Mohamed EL HAJJI</p>
+  <div class="layout">
+    <section class="panel stage" aria-label="Talk to Momo">
+      <div class="stage-top">
+        <span id="testing" class="testing"></span>
+        <div id="modelSwitch" hidden>Model
+          <span class="seg" role="group" aria-label="Reply model"><button type="button" data-model="mlp">MLP</button><button type="button" data-model="cnn">CNN</button></span>
+        </div>
+      </div>
+      <svg id="momo" viewBox="-40 -40 480 490" role="button" tabindex="0" aria-label="Momo. Tap to start talking">
     <g id="waves" fill="none" stroke="#2a1f17" stroke-width="6" stroke-linecap="round">
       <path d="M-6 110Q-22 150 -6 190M-26 92Q-48 150 -26 208"/>
       <path d="M406 110Q422 150 406 190M426 92Q448 150 426 208"/>
@@ -133,28 +181,31 @@
     <g id="orbit" fill="#2a1f17"><circle r="9"/><circle r="9"/><circle r="9"/></g>
     <g id="burst"></g>
   </svg>
-
-  <p id="caption" aria-live="polite">Tap Momo to talk</p>
-  <section id="versions" aria-labelledby="versionsTitle">
-    <h2 id="versionsTitle">Choose a version to test</h2>
-    <p>Each version has its own Colab notebook with the full training and results.</p>
-    <div id="versionCards"></div>
-    <div id="modelSwitch" hidden>Momo replies with
-      <span class="seg" role="group" aria-label="Reply model"><button type="button" data-model="mlp">MLP</button><button type="button" data-model="cnn">CNN</button></span>
-    </div>
-    <select id="versionChoice" hidden></select>
-    <select id="modelChoice" hidden><option value="mlp">MLP</option><option value="cnn">CNN</option></select>
-  </section>
-  <svg id="radar" viewBox="-245 -158 490 290" role="img" aria-label="Personality profile"></svg>
-  <p id="turnCue" aria-live="polite" hidden></p>
-  <small id="emotionCredit" hidden>Experimental · May misread everyday speech · Trained on <a href="https://github.com/CheyneyComputerScience/CREMA-D">CREMA-D (Cao et al., ODbL / DbCL)</a></small>
-  <details>
-    <summary id="historyTitle">Compare scores and view history</summary>
+      <p id="caption" aria-live="polite">Tap Momo to talk</p>
+      <p class="hint">Speak for 5 to 15 seconds. Speech needs Google Chrome.</p>
+      <div id="profile" class="profile">
+        <h2>Personality profile</h2>
+        <svg id="radar" viewBox="-245 -158 490 290" role="img" aria-label="Personality profile"></svg>
+      </div>
+      <p id="turnCue" aria-live="polite" hidden></p>
+      <small id="emotionCredit" hidden>Experimental · May misread everyday speech · Trained on <a href="https://github.com/CheyneyComputerScience/CREMA-D">CREMA-D (Cao et al., ODbL / DbCL)</a></small>
+    </section>
+    <section id="versions" aria-labelledby="versionsTitle">
+      <h2 id="versionsTitle">Versions</h2>
+      <div id="versionCards"></div>
+      <select id="versionChoice" hidden></select>
+      <select id="modelChoice" hidden><option value="mlp">MLP</option><option value="cnn">CNN</option></select>
+    </section>
+  </div>
+  <section class="panel history" aria-labelledby="historyTitle">
+    <h2 id="historyTitle">Turn history</h2>
     <div class="scroll"><table>
       <thead><tr><th>Said</th><th>Model</th><th>O</th><th>C</th><th>E</th><th>A</th><th>N</th><th>Reply style</th></tr></thead>
       <tbody id="rows"></tbody>
+      <tfoot><tr><td colspan="8">Your turns will appear here.</td></tr></tfoot>
     </table></div>
-  </details>
+  </section>
+  <footer><span>We don't store any of your data.</span><span>Master Big Data et Intelligence Artificielle · Université Ibn Zohr</span></footer>
 </main>
 
 <script>
@@ -187,15 +238,16 @@ function configureVersion() {
   for (const card of $("versionCards").children) {
     const on = card.dataset.version === version;
     card.classList.toggle("on", on);
-    card.querySelector(".pick").textContent = on ? "Testing now" : "Try this one";
+    card.querySelector(".pick").textContent = on ? "Testing now" : "Test this version";
     card.querySelector(".pick").setAttribute("aria-pressed", on);
   }
   syncModel();
-  $("radar").toggleAttribute("hidden", emotionMode);
+  $("profile").hidden = emotionMode;
+  const info = VERSION_INFO[version];
+  $("testing").textContent = `Testing version ${version}` + (info ? ` · ${info.title}` : "");
   $("emotionCredit").hidden = !emotionMode;
   $("turnCue").hidden = !emotionMode;
   $("turnCue").textContent = emotionMode ? "Perceived emotion appears after you speak" : "";
-  $("historyTitle").textContent = version === "2" ? "Compare scores and view history" : "View turn history";
   const columns = emotionMode ? ["Said", "Perceived delivery", "Model", "Reply starts"]
     : ["Said", "Model", "O", "C", "E", "A", "N", "Reply style"];
   document.querySelector("thead tr").replaceChildren(...columns.map(label => {
@@ -207,25 +259,34 @@ function configureVersion() {
 }
 
 const VERSION_INFO = {
-  "1": { title: "Original Momo", what: "Personality from voice and words: a text MLP and an audio MLP, fused.", result: "Test score 89.95% (1 − MAE)" },
-  "2": { title: "MLP vs CNN", what: "The retrained personality MLP next to a CNN. Switch the model while you talk.", result: "Test: MLP 90.20% · CNN 89.93%" },
-  "3": { title: "Turn emotion", what: "Emotion heard in the voice of each speaking turn, trained on CREMA-D. Experimental.", result: "Macro-F1 on new voices: live CNN 41.1% · Colab run 34.7%" }
+  "1": { title: "Original Momo", short: "Original", score: "89.95%", what: "Personality from voice and words: a text MLP and an audio MLP, fused. Test score is 1 − MAE." },
+  "2": { title: "MLP vs CNN", short: "MLP vs CNN", score: "90.20% · 89.93%", what: "The retrained personality MLP next to a CNN. Switch the model while you talk. Test: MLP 90.20%, CNN 89.93%." },
+  "3": { title: "Turn emotion", short: "Emotion", score: "41.1% · 34.7%", what: "Emotion heard in the voice of each turn, trained on CREMA-D. Macro-F1 on new voices: live CNN 41.1%, Colab run 34.7%. Experimental." }
 };
 
 function displayVersions(versions) {
   $("versionChoice").replaceChildren();
   $("versionCards").replaceChildren();
+  $("notebookLinks").replaceChildren($("notebookLinks").firstElementChild);
   for (const version of versions) {
     $("versionChoice").add(new Option(version.name, version.id));
-    const info = VERSION_INFO[version.id] || { title: version.name, what: "", result: "" };
+    const info = VERSION_INFO[version.id] || { title: version.name, short: version.name, score: "", what: "" };
     const card = document.createElement("article");
     card.className = "card";
     card.dataset.version = version.id;
-    card.innerHTML = `<span class="tag">Version ${version.id}</span><h3></h3><p></p><p class="result"></p>`
-      + `<div class="actions"><button type="button" class="pick"></button><a class="open" target="_blank" rel="noopener noreferrer">Notebook ↗</a></div>`;
-    card.querySelector("h3").textContent = info.title;
+    card.innerHTML = `<div class="head"><h3><span>v${version.id} ·</span> </h3><span class="score"></span></div><p></p>`
+      + `<div class="actions"><button type="button" class="pick"></button><a class="open" target="_blank" rel="noopener noreferrer">Open notebook <span aria-hidden="true">↗</span></a></div>`;
+    card.querySelector("h3").append(info.title);
+    card.querySelector(".score").textContent = info.score;
     card.querySelector("p").textContent = info.what;
-    card.querySelector(".result").textContent = info.result;
+    const link = document.createElement("a");
+    link.href = version.notebook;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = `v${version.id} ${info.short} `;
+    link.insertAdjacentHTML("beforeend", '<span aria-hidden="true">↗</span>');
+    link.setAttribute("aria-label", `Open the Colab notebook for version ${version.id}, ${info.title}`);
+    $("notebookLinks").appendChild(link);
     card.querySelector(".open").href = version.notebook;
     card.querySelector(".open").setAttribute("aria-label", `Open the Colab notebook for version ${version.id}, ${info.title}`);
     card.querySelector(".pick").onclick = () => {
