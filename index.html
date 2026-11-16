@@ -62,6 +62,7 @@
   th, td { padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--line); }
   th:first-child, td:first-child { text-align: left; min-width: 240px; }
   td small { display: block; font-size: 14px; color: var(--ink-soft); }
+  #modelChoice { font: inherit; border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; background: white; color: var(--ink); }
   #lock { position: fixed; inset: 0; z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 16px; background: var(--tint); text-align: center; }
   #lock[hidden] { display: none; }
   #lock h1 { margin: 0; font: 600 clamp(32px, 5vw, 44px)/1.1 var(--font); letter-spacing: -.03em; }
@@ -113,11 +114,12 @@
   </svg>
 
   <p id="caption" aria-live="polite">Tap Momo to talk</p>
+  <label for="modelChoice">Reply model <select id="modelChoice"><option value="mlp">MLP</option><option value="cnn">CNN</option></select></label>
   <svg id="radar" viewBox="-245 -158 490 290" role="img" aria-label="Personality profile"></svg>
   <details>
-    <summary>History</summary>
+    <summary>Compare scores and view history</summary>
     <div class="scroll"><table>
-      <thead><tr><th>Said</th><th>O</th><th>C</th><th>E</th><th>A</th><th>N</th><th>Reply style</th></tr></thead>
+      <thead><tr><th>Said</th><th>Model</th><th>O</th><th>C</th><th>E</th><th>A</th><th>N</th><th>Reply style</th></tr></thead>
       <tbody id="rows"></tbody>
     </table></div>
   </details>
@@ -542,10 +544,22 @@ function show(result) {
   return result.applied_trait || leader;
 }
 
+let priorStyles = { mlp: null, cnn: null };
+let latestProfiles = null;
+$("modelChoice").onchange = () => {
+  const model = $("modelChoice").value;
+  leader = priorStyles[model];
+  if (latestProfiles?.comparison?.[model]) {
+    show({ ...latestProfiles, ...latestProfiles.comparison[model], applied_trait: leader });
+  }
+};
+
 async function respond(turn) {
   if (expireConversation()) return;
   const text = turn.text;
   const control = new AbortController();
+  const model = $("modelChoice").value;
+  $("modelChoice").disabled = true;
   reply = control;
   let said = "", last = Promise.resolve();
   try {
@@ -553,7 +567,7 @@ async function respond(turn) {
       method: "POST",
       signal: control.signal,
       headers: { "Content-Type": "application/json", "X-Conversation": conversation },
-      body: JSON.stringify({ transcript: text, audio_base64: turn.audio, trait: leader, history, prediction: turn.prediction })
+      body: JSON.stringify({ transcript: text, audio_base64: turn.audio, model, trait: priorStyles[model], history, prediction: turn.prediction })
     });
     if (response.status === 410 && turn.id === session) {
       stop();
@@ -575,6 +589,10 @@ async function respond(turn) {
         if (item.error) throw new Error(item.error);
         if (item.speech_error) say(`Voice failed: ${item.speech_error}. Momo said: ${said}`);
         if (item.prediction) {
+          latestProfiles = item.prediction;
+          for (const [name, profile] of Object.entries(item.prediction.comparison || {})) {
+            priorStyles[name] = profile.leading_trait || priorStyles[name];
+          }
           leader = show(item.prediction);
           turn.row = addRow(item.prediction, text, leader).querySelector("small");
         }
@@ -590,7 +608,7 @@ async function respond(turn) {
     if (turn.id === session) interrupt();
     if (error.name !== "AbortError") throw error;
   } finally {
-    if (reply === control) reply = null;
+    if (reply === control) { reply = null; $("modelChoice").disabled = false; }
     if (said && turn.id === session) {
       turn.said = said;
       if (turn.row) turn.row.textContent = "Momo: " + said;
@@ -605,6 +623,7 @@ function addRow(result, text, leader) {
   said.textContent = text || "(no words)";
   said.appendChild(document.createElement("small"));
   row.appendChild(said);
+  row.insertCell().textContent = (result.model || "mlp").toUpperCase();
   for (const trait of TRAITS) {
     const cell = document.createElement("td");
     cell.textContent = result.scores[trait].toFixed(2);
@@ -613,6 +632,16 @@ function addRow(result, text, leader) {
   const who = document.createElement("td");
   who.textContent = result.leading_trait ? NAMES[leader] : (leader ? NAMES[leader] + " (held)" : "No clear lead");
   row.appendChild(who);
+  const otherName = result.model === "cnn" ? "mlp" : "cnn";
+  const other = result.comparison?.[otherName];
+  if (other) {
+    const comparison = document.createElement("tr");
+    comparison.insertCell().textContent = "Same input";
+    comparison.insertCell().textContent = otherName.toUpperCase();
+    for (const trait of TRAITS) comparison.insertCell().textContent = other.scores[trait].toFixed(2);
+    comparison.insertCell().textContent = "Comparison only";
+    $("rows").prepend(comparison);
+  }
   $("rows").prepend(row);
   return row;
 }
@@ -684,6 +713,9 @@ function stop() {
   session++;
   settling = false;
   $("rows").replaceChildren();
+  priorStyles = { mlp: null, cnn: null };
+  latestProfiles = null;
+  $("modelChoice").disabled = false;
   recording = false;
   talking = false;
   interrupt();
