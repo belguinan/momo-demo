@@ -209,7 +209,7 @@ function configureVersion() {
 const VERSION_INFO = {
   "1": { title: "Original Momo", what: "Personality from voice and words: a text MLP and an audio MLP, fused.", result: "Test score 89.95% (1 − MAE)" },
   "2": { title: "MLP vs CNN", what: "The retrained personality MLP next to a CNN. Switch the model while you talk.", result: "Test: MLP 90.20% · CNN 89.93%" },
-  "3": { title: "Turn emotion", what: "Emotion heard in the voice of each speaking turn, trained on CREMA-D. Experimental.", result: "CNN on new voices and sentences: macro-F1 41.1%" }
+  "3": { title: "Turn emotion", what: "Emotion heard in the voice of each speaking turn, trained on CREMA-D. Experimental.", result: "Macro-F1 on new voices: live CNN 41.1% · Colab run 34.7%" }
 };
 
 function displayVersions(versions) {
